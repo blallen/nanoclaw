@@ -5,7 +5,7 @@ import { readEnvFile } from './env.js';
 // Read config values from .env (falls back to process.env).
 // Secrets are NOT read here — they stay on disk and are loaded only
 // where needed (container-runner.ts) to avoid leaking to child processes.
-const envConfig = readEnvFile(['ASSISTANT_NAME', 'ASSISTANT_HAS_OWN_NUMBER', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_ONLY']);
+const envConfig = readEnvFile(['ASSISTANT_NAME', 'ASSISTANT_HAS_OWN_NUMBER', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_ONLY', 'MCP_BRIDGE_PORT', 'MCP_BRIDGE_ENABLED', 'MCP_BRIDGE_HOST']);
 
 export const ASSISTANT_NAME =
   process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
@@ -15,6 +15,14 @@ export const TELEGRAM_BOT_TOKEN =
   process.env.TELEGRAM_BOT_TOKEN || envConfig.TELEGRAM_BOT_TOKEN || '';
 export const TELEGRAM_ONLY =
   (process.env.TELEGRAM_ONLY || envConfig.TELEGRAM_ONLY) === 'true';
+export const MCP_BRIDGE_PORT = parseInt(
+  process.env.MCP_BRIDGE_PORT || envConfig.MCP_BRIDGE_PORT || '7891',
+  10,
+);
+export const MCP_BRIDGE_ENABLED =
+  (process.env.MCP_BRIDGE_ENABLED || envConfig.MCP_BRIDGE_ENABLED || 'true') !== 'false';
+export const MCP_BRIDGE_HOST =
+  process.env.MCP_BRIDGE_HOST || envConfig.MCP_BRIDGE_HOST || '';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 
