@@ -453,7 +453,7 @@ async function runQuery(
             command: 'npx',
             args: [
               'mcp-remote',
-              `http://${process.env.NANOCLAW_MCP_HOST}:${process.env.NANOCLAW_MCP_PORT || '7891'}/sse`,
+              `http://${process.env.NANOCLAW_MCP_HOST}:${process.env.NANOCLAW_MCP_PORT || '7891'}/mcp`,
               '--allow-http',
             ],
           },

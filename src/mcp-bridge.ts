@@ -28,7 +28,7 @@ export class McpBridge {
     const nodeDir = dirname(process.execPath);
     this.proc = spawn(
       process.execPath,
-      [supergatewayScript, '--stdio', `${npxPath} -y mcp-server-apple-events`, '--port', String(this.port)],
+      [supergatewayScript, '--stdio', `${npxPath} -y mcp-server-apple-events`, '--port', String(this.port), '--outputTransport', 'streamableHttp'],
       {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env, PATH: `${nodeDir}:${process.env.PATH || '/usr/bin:/bin'}` },
