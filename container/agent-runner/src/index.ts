@@ -454,6 +454,7 @@ async function runQuery(
             args: [
               'mcp-remote',
               `http://${process.env.NANOCLAW_MCP_HOST}:${process.env.NANOCLAW_MCP_PORT || '7891'}/sse`,
+              '--allow-http',
             ],
           },
         } : {}),
