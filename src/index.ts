@@ -7,11 +7,14 @@ import {
   DATA_DIR,
   IDLE_TIMEOUT,
   MAIN_GROUP_FOLDER,
+  MCP_BRIDGE_ENABLED,
+  MCP_BRIDGE_PORT,
   POLL_INTERVAL,
   TELEGRAM_BOT_TOKEN,
   TELEGRAM_ONLY,
   TRIGGER_PATTERN,
 } from './config.js';
+import { McpBridge } from './mcp-bridge.js';
 import { WhatsAppChannel } from './channels/whatsapp.js';
 import { TelegramChannel } from './channels/telegram.js';
 import { findChannel } from './router.js';
@@ -53,6 +56,7 @@ let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
 
 let whatsapp: WhatsAppChannel;
+let mcpBridge: McpBridge | null = null;
 const channels: Channel[] = [];
 const queue = new GroupQueue();
 
@@ -468,6 +472,7 @@ async function main(): Promise<void> {
     logger.info({ signal }, 'Shutdown signal received');
     await queue.shutdown(10000);
     for (const ch of channels) await ch.disconnect();
+    mcpBridge?.stop();
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
@@ -480,6 +485,12 @@ async function main(): Promise<void> {
       storeChatMetadata(chatJid, timestamp, name),
     registeredGroups: () => registeredGroups,
   };
+
+  // Start host-side MCP bridge for Apple Reminders/Calendar
+  if (MCP_BRIDGE_ENABLED) {
+    mcpBridge = new McpBridge(MCP_BRIDGE_PORT);
+    mcpBridge.start();
+  }
 
   // Create and connect channels
   if (!TELEGRAM_ONLY) {
