@@ -431,7 +431,8 @@ async function runQuery(
         'TeamCreate', 'TeamDelete', 'SendMessage',
         'TodoWrite', 'ToolSearch', 'Skill',
         'NotebookEdit',
-        'mcp__nanoclaw__*'
+        'mcp__nanoclaw__*',
+        'mcp__apple-events__*',
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -447,6 +448,15 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
+        ...(process.env.NANOCLAW_MCP_HOST ? {
+          'apple-events': {
+            command: 'npx',
+            args: [
+              'mcp-remote',
+              `http://${process.env.NANOCLAW_MCP_HOST}:${process.env.NANOCLAW_MCP_PORT || '7891'}/sse`,
+            ],
+          },
+        } : {}),
       },
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook()] }],
