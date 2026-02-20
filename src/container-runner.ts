@@ -2,7 +2,7 @@
  * Container Runner for NanoClaw
  * Spawns agent execution in Apple Container and handles IPC
  */
-import { ChildProcess, exec, spawn } from 'child_process';
+import { ChildProcess, exec, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -14,6 +14,8 @@ import {
   DATA_DIR,
   GROUPS_DIR,
   IDLE_TIMEOUT,
+  MCP_BRIDGE_HOST,
+  MCP_BRIDGE_PORT,
 } from './config.js';
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
@@ -23,6 +25,43 @@ import { RegisteredGroup } from './types.js';
 // Sentinel markers for robust output parsing (must match agent-runner)
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
+
+let cachedHostGateway: string | null | undefined = undefined;
+
+/**
+ * Discover the host gateway IP reachable from inside Apple Container VMs.
+ * Runs a lightweight container to read its default route.
+ * Result is cached for the process lifetime.
+ */
+export async function discoverHostGateway(): Promise<string | null> {
+  if (cachedHostGateway !== undefined) return cachedHostGateway;
+
+  // Manual override takes priority
+  if (MCP_BRIDGE_HOST) {
+    cachedHostGateway = MCP_BRIDGE_HOST;
+    logger.info({ ip: cachedHostGateway }, 'Using MCP_BRIDGE_HOST override for host gateway');
+    return cachedHostGateway;
+  }
+
+  try {
+    const output = execSync(
+      'container run --rm alpine ip route show default',
+      { encoding: 'utf-8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+    const match = output.match(/default via (\S+)/);
+    cachedHostGateway = match?.[1] ?? null;
+  } catch (err) {
+    logger.warn({ err }, 'Failed to discover host gateway IP');
+    cachedHostGateway = null;
+  }
+
+  if (cachedHostGateway) {
+    logger.info({ ip: cachedHostGateway }, 'Discovered host gateway IP for MCP bridge');
+  } else {
+    logger.warn('Could not discover host gateway IP; apple-events MCP will be unavailable');
+  }
+  return cachedHostGateway;
+}
 
 function getHomeDir(): string {
   const home = process.env.HOME || os.homedir();
@@ -189,7 +228,7 @@ function readSecrets(): Record<string, string> {
   return readEnvFile(['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']);
 }
 
-function buildContainerArgs(mounts: VolumeMount[], containerName: string): string[] {
+function buildContainerArgs(mounts: VolumeMount[], containerName: string, hostIp?: string | null): string[] {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
   // Apple Container: --mount for readonly, -v for read-write
@@ -202,6 +241,11 @@ function buildContainerArgs(mounts: VolumeMount[], containerName: string): strin
     } else {
       args.push('-v', `${mount.hostPath}:${mount.containerPath}`);
     }
+  }
+
+  if (hostIp) {
+    args.push('-e', `NANOCLAW_MCP_HOST=${hostIp}`);
+    args.push('-e', `NANOCLAW_MCP_PORT=${MCP_BRIDGE_PORT}`);
   }
 
   args.push(CONTAINER_IMAGE);
@@ -223,7 +267,8 @@ export async function runContainerAgent(
   const mounts = buildVolumeMounts(group, input.isMain);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
-  const containerArgs = buildContainerArgs(mounts, containerName);
+  const hostIp = await discoverHostGateway();
+  const containerArgs = buildContainerArgs(mounts, containerName, hostIp);
 
   logger.debug(
     {
