@@ -21,8 +21,10 @@ import { TelegramChannel } from './channels/telegram.js';
 import { findChannel } from './router.js';
 import {
   ContainerOutput,
+  discoverHostGateway,
   runContainerAgent,
   writeGroupsSnapshot,
+  writeMcpServersSnapshot,
   writeTasksSnapshot,
 } from './container-runner.js';
 import {
@@ -252,6 +254,14 @@ async function runAgent(
     availableGroups,
     new Set(Object.keys(registeredGroups)),
   );
+
+  // Write MCP servers snapshot for container to read
+  if (mcpBridgeManager) {
+    const hostIp = await discoverHostGateway();
+    if (hostIp) {
+      writeMcpServersSnapshot(group.folder, mcpBridgeManager.getServerUrls(hostIp));
+    }
+  }
 
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput

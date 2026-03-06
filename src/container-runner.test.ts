@@ -14,6 +14,7 @@ vi.mock('./config.js', () => ({
   DATA_DIR: '/tmp/nanoclaw-test-data',
   GROUPS_DIR: '/tmp/nanoclaw-test-groups',
   IDLE_TIMEOUT: 1800000, // 30min
+  MCP_BRIDGE_HOST: '',
 }));
 
 // Mock logger
@@ -78,6 +79,7 @@ vi.mock('child_process', async () => {
       if (cb) cb(null);
       return new EventEmitter();
     }),
+    execSync: vi.fn(() => 'default via 192.168.64.1 dev eth0'),
   };
 });
 

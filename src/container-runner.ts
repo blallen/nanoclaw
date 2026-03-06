@@ -15,7 +15,6 @@ import {
   GROUPS_DIR,
   IDLE_TIMEOUT,
   MCP_BRIDGE_HOST,
-  MCP_BRIDGE_PORT,
 } from './config.js';
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
@@ -245,7 +244,6 @@ function buildContainerArgs(mounts: VolumeMount[], containerName: string, hostIp
 
   if (hostIp) {
     args.push('-e', `NANOCLAW_MCP_HOST=${hostIp}`);
-    args.push('-e', `NANOCLAW_MCP_PORT=${MCP_BRIDGE_PORT}`);
   }
 
   args.push(CONTAINER_IMAGE);
@@ -685,4 +683,18 @@ export function writeGroupsSnapshot(
       2,
     ),
   );
+}
+
+/**
+ * Write MCP servers snapshot for the container agent to read.
+ * Maps server names to their URLs.
+ */
+export function writeMcpServersSnapshot(
+  groupFolder: string,
+  servers: Record<string, { url: string }>,
+): void {
+  const groupIpcDir = path.join(DATA_DIR, 'ipc', groupFolder);
+  fs.mkdirSync(groupIpcDir, { recursive: true });
+  const serversFile = path.join(groupIpcDir, 'mcp_servers.json');
+  fs.writeFileSync(serversFile, JSON.stringify({ servers }, null, 2));
 }
