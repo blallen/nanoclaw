@@ -30,17 +30,16 @@ Goal: give the container agent (Taskie) read/write access to Apple Reminders and
 
 ```
 NanoClaw (host macOS)
-  └── McpBridge (src/mcp-bridge.ts)
-        └── supergateway --stdio <mcp-server> --outputTransport streamableHttp --port 7891
-              └── MCP server (accesses EventKit via macOS APIs)
+  └── McpBridgeManager (src/mcp-bridge-manager.ts)
+        └── per-server supergateway instances (ports from mcp-servers/registry.json)
+              └── MCP server (e.g. accesses EventKit via macOS APIs)
 
 Container (Linux VM)
   └── Claude Agent SDK
-        └── apple-events MCP server
-              └── mcp-remote http://192.168.64.1:7891/mcp --allow-http
+        └── mcp-remote http://<host-gateway>:<port>/mcp --allow-http
 ```
 
-The host spawns supergateway as a child process to bridge a stdio MCP server to HTTP. The container connects via `mcp-remote` using the host gateway IP (`192.168.64.1` on Apple Container's default network). Port 7891. Transport: Streamable HTTP (`/mcp` endpoint, not `/sse`).
+The host spawns one supergateway per stdio MCP server (managed by `McpBridgeManager` reading `mcp-servers/registry.json`). HTTP servers are passed through directly. The container connects via `mcp-remote` using the host gateway IP (`192.168.64.1` on Apple Container's default network). Transport: Streamable HTTP (`/mcp` endpoint, not `/sse`).
 
 ### Current State: mcp-server-apple-events (fragile)
 
@@ -64,7 +63,7 @@ Implementation plan: `docs/plans/2026-02-20-che-ical-mcp-migration.md`
 
 Replace `mcp-server-apple-events` with `che-ical-mcp` — a native Swift MCP server that ships **precompiled binaries** via GitHub Releases. No Swift compilation, no npm package, no postinstall step.
 
-The binary is vendored at `vendor/CheICalMCP` (pinned to a specific release). `mcp-bridge.ts` passes it directly as the `--stdio` argument to supergateway. Everything else (port, transport, mcp-remote, container config) stays the same.
+The binary is vendored at `vendor/CheICalMCP` (pinned to a specific release). It is registered in `mcp-servers/registry.json` and managed by `McpBridgeManager`. Everything else (transport, mcp-remote, container config) stays the same.
 
 **Why not migrate immediately:** Working setup exists; want to use it as-is for a while before another round of TCC permission prompts and testing. The plan is ready when we want to execute.
 
@@ -79,7 +78,7 @@ The binary is vendored at `vendor/CheICalMCP` (pinned to a specific release). `m
 
 | File | What's custom |
 |------|---------------|
-| `src/mcp-bridge.ts` | Runs supergateway + mcp-server-apple-events for Apple Reminders/Calendar |
+| `src/mcp-bridge-manager.ts` | Manages supergateway instances for MCP servers via registry |
 | `src/channels/telegram.ts` | Telegram channel (added via skill) |
 | `groups/main/CLAUDE.md` | Taskie's persona + apple-events tool documentation |
 | `vendor/` | (planned) Will hold vendored `CheICalMCP` binary |
