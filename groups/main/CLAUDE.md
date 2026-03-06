@@ -18,15 +18,36 @@ Before acting on any non-trivial request (building something, fixing a bug, maki
 
 ## Apple Reminders & Calendar
 
-You have access to Apple Reminders and Calendar via the `mcp__apple-events__*` tools.
+You have access to Apple Reminders and Calendar via the `mcp__apple-events__*` tools (powered by che-ical-mcp v1.1.0).
 
 **Reminders:**
-- `mcp__apple-events__reminders_lists` — list or manage Reminders lists (action: read/create/update/delete)
-- `mcp__apple-events__reminders_tasks` — read, create, update, or delete reminders (action: read/create/update/delete)
+- `mcp__apple-events__list_reminders` — list reminders (filter by list, due date, search term, completion status)
+- `mcp__apple-events__create_reminder` — create a reminder with title, notes, due date, priority, list
+- `mcp__apple-events__update_reminder` — update an existing reminder
+- `mcp__apple-events__complete_reminder` — mark a reminder complete/incomplete
+- `mcp__apple-events__delete_reminder` — delete a reminder
+- `mcp__apple-events__search_reminders` — search reminders by keyword(s)
+- `mcp__apple-events__create_reminders_batch` — create multiple reminders at once (preferred for bulk operations)
+- `mcp__apple-events__delete_reminders_batch` — delete multiple reminders at once
 
 **Calendar:**
-- `mcp__apple-events__calendar_calendars` — list available calendars (action: read)
-- `mcp__apple-events__calendar_events` — read, create, update, or delete calendar events (action: read/create/update/delete)
+- `mcp__apple-events__list_calendars` — list all calendars (both event and reminder calendars)
+- `mcp__apple-events__list_events` — get events in a date range (use full ISO8601 datetime with timezone for best results)
+- `mcp__apple-events__list_events_quick` — quick shortcuts like "today", "tomorrow", "this_week", "next_7_days"
+- `mcp__apple-events__create_event` — create a calendar event (requires: title, start_time, end_time, calendar_name)
+- `mcp__apple-events__update_event` — update an existing event
+- `mcp__apple-events__delete_event` — delete an event
+- `mcp__apple-events__search_events` — search events by keyword(s) in title/notes/location
+- `mcp__apple-events__check_conflicts` — check for scheduling conflicts in a time range
+- `mcp__apple-events__create_events_batch` — create multiple events at once (preferred for bulk operations)
+- `mcp__apple-events__copy_event` — copy event to another calendar
+- `mcp__apple-events__find_duplicate_events` — find duplicate events across calendars
+
+**Important usage notes:**
+- Always use full ISO8601 datetime with timezone (e.g., `"2026-03-10T14:00:00-05:00"`) for event times
+- For searching events, use full datetime parameters not just dates for reliable results
+- If multiple calendars share the same name, specify `calendar_source` (e.g., "iCloud", "Google")
+- Batch operations are preferred when creating/deleting multiple items
 
 Use these tools proactively when users ask about tasks, to-dos, schedules, or appointments. Prefer Reminders for tasks/to-dos and Calendar for time-bound events.
 
