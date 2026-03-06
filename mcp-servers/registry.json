@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "apple-events": {
+      "transport": "stdio",
+      "command": "node",
+      "args": ["node_modules/mcp-server-apple-events/dist/index.js"],
+      "port": 7891,
+      "enabled": true
+    }
+  }
+}
