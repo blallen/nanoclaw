@@ -353,6 +353,88 @@ describe('IPC message authorization', () => {
   });
 });
 
+// --- MCP server management authorization ---
+
+describe('MCP server management authorization', () => {
+  const mcpOps: Array<{ type: string; name: string }> = [];
+  let mcpDeps: IpcDeps;
+
+  beforeEach(() => {
+    mcpOps.length = 0;
+    mcpDeps = {
+      ...deps,
+      addMcpServer: (name) => { mcpOps.push({ type: 'add', name }); },
+      removeMcpServer: (name) => { mcpOps.push({ type: 'remove', name }); },
+      restartMcpServer: (name) => { mcpOps.push({ type: 'restart', name }); },
+      restartAllMcpServers: () => { mcpOps.push({ type: 'restart_all', name: '*' }); },
+    };
+  });
+
+  it('main group can add an MCP server', async () => {
+    await processTaskIpc(
+      { type: 'add_mcp_server', name: 'test-server', transport: 'http', url: 'http://localhost:3000/mcp' },
+      'main', true, mcpDeps,
+    );
+    expect(mcpOps).toHaveLength(1);
+    expect(mcpOps[0]).toEqual({ type: 'add', name: 'test-server' });
+  });
+
+  it('non-main group cannot add an MCP server', async () => {
+    await processTaskIpc(
+      { type: 'add_mcp_server', name: 'test-server', transport: 'http', url: 'http://localhost:3000/mcp' },
+      'other-group', false, mcpDeps,
+    );
+    expect(mcpOps).toHaveLength(0);
+  });
+
+  it('main group can remove an MCP server', async () => {
+    await processTaskIpc(
+      { type: 'remove_mcp_server', name: 'test-server' },
+      'main', true, mcpDeps,
+    );
+    expect(mcpOps).toHaveLength(1);
+    expect(mcpOps[0]).toEqual({ type: 'remove', name: 'test-server' });
+  });
+
+  it('non-main group cannot remove an MCP server', async () => {
+    await processTaskIpc(
+      { type: 'remove_mcp_server', name: 'test-server' },
+      'other-group', false, mcpDeps,
+    );
+    expect(mcpOps).toHaveLength(0);
+  });
+
+  it('main group can restart an MCP server', async () => {
+    await processTaskIpc(
+      { type: 'restart_mcp_server', name: 'test-server' },
+      'main', true, mcpDeps,
+    );
+    expect(mcpOps).toHaveLength(1);
+    expect(mcpOps[0]).toEqual({ type: 'restart', name: 'test-server' });
+  });
+
+  it('main group can restart all MCP servers', async () => {
+    await processTaskIpc(
+      { type: 'restart_all_mcp_servers' },
+      'main', true, mcpDeps,
+    );
+    expect(mcpOps).toHaveLength(1);
+    expect(mcpOps[0]).toEqual({ type: 'restart_all', name: '*' });
+  });
+
+  it('non-main group cannot restart MCP servers', async () => {
+    await processTaskIpc(
+      { type: 'restart_mcp_server', name: 'test-server' },
+      'other-group', false, mcpDeps,
+    );
+    await processTaskIpc(
+      { type: 'restart_all_mcp_servers' },
+      'other-group', false, mcpDeps,
+    );
+    expect(mcpOps).toHaveLength(0);
+  });
+});
+
 // --- schedule_task with cron and interval types ---
 
 describe('schedule_task schedule types', () => {

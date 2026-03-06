@@ -26,6 +26,10 @@ export interface IpcDeps {
     availableGroups: AvailableGroup[],
     registeredJids: Set<string>,
   ) => void;
+  addMcpServer?: (name: string, config: { transport: string; command?: string; args?: string[]; url?: string }) => void;
+  removeMcpServer?: (name: string) => void;
+  restartMcpServer?: (name: string) => void;
+  restartAllMcpServers?: () => void;
 }
 
 let ipcWatcherRunning = false;
@@ -169,6 +173,11 @@ export async function processTaskIpc(
     trigger?: string;
     requiresTrigger?: boolean;
     containerConfig?: RegisteredGroup['containerConfig'];
+    // For MCP server management
+    transport?: string;
+    url?: string;
+    command?: string;
+    args?: string | string[];
   },
   sourceGroup: string, // Verified identity from IPC directory
   isMain: boolean, // Verified from directory path
@@ -370,6 +379,55 @@ export async function processTaskIpc(
           { data },
           'Invalid register_group request - missing required fields',
         );
+      }
+      break;
+
+    case 'add_mcp_server':
+      if (!isMain) {
+        logger.warn({ sourceGroup }, 'Unauthorized add_mcp_server attempt blocked');
+        break;
+      }
+      if (data.name && deps.addMcpServer) {
+        deps.addMcpServer(data.name, {
+          transport: data.transport || 'stdio',
+          command: data.command,
+          args: data.args ? (Array.isArray(data.args) ? data.args : [data.args]) : [],
+          url: data.url,
+        });
+        logger.info({ name: data.name, sourceGroup }, 'MCP server added via IPC');
+      }
+      break;
+
+    case 'remove_mcp_server':
+      if (!isMain) {
+        logger.warn({ sourceGroup }, 'Unauthorized remove_mcp_server attempt blocked');
+        break;
+      }
+      if (data.name && deps.removeMcpServer) {
+        deps.removeMcpServer(data.name);
+        logger.info({ name: data.name, sourceGroup }, 'MCP server removed via IPC');
+      }
+      break;
+
+    case 'restart_mcp_server':
+      if (!isMain) {
+        logger.warn({ sourceGroup }, 'Unauthorized restart_mcp_server attempt blocked');
+        break;
+      }
+      if (data.name && deps.restartMcpServer) {
+        deps.restartMcpServer(data.name);
+        logger.info({ name: data.name, sourceGroup }, 'MCP server restarted via IPC');
+      }
+      break;
+
+    case 'restart_all_mcp_servers':
+      if (!isMain) {
+        logger.warn({ sourceGroup }, 'Unauthorized restart_all_mcp_servers attempt blocked');
+        break;
+      }
+      if (deps.restartAllMcpServers) {
+        deps.restartAllMcpServers();
+        logger.info({ sourceGroup }, 'All MCP servers restart requested via IPC');
       }
       break;
 
