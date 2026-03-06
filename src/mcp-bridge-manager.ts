@@ -4,6 +4,8 @@ import { watch, FSWatcher } from 'fs';
 import { logger } from './logger.js';
 import {
   loadRegistry,
+  saveRegistry,
+  findNextPort,
   Registry,
   ServerConfig,
   StdioServerConfig,
@@ -169,7 +171,57 @@ export class McpBridgeManager {
     return this.httpServers.size > 0;
   }
 
+  async addServer(name: string, config: { transport: string; command?: string; args?: string[]; url?: string }): Promise<void> {
+    const registry = await this.loadRegistrySafe();
+    if (!registry) return;
+
+    if (registry.servers[name]) {
+      logger.warn({ name }, 'MCP server already exists in registry');
+      return;
+    }
+
+    let serverConfig: ServerConfig;
+    if (config.transport === 'http' && config.url) {
+      serverConfig = { transport: 'http', url: config.url, enabled: true };
+    } else {
+      serverConfig = {
+        transport: 'stdio',
+        command: config.command || 'node',
+        args: config.args || [],
+        port: findNextPort(registry),
+        enabled: true,
+      };
+    }
+
+    registry.servers[name] = serverConfig;
+    await saveRegistry(this.registryPath, registry);
+
+    this.startOneServer(name, serverConfig);
+    logger.info({ name, config: serverConfig }, 'MCP server added and started');
+  }
+
+  async removeServer(name: string): Promise<void> {
+    this.stopServer(name);
+
+    const registry = await this.loadRegistrySafe();
+    if (!registry) return;
+
+    delete registry.servers[name];
+    await saveRegistry(this.registryPath, registry);
+
+    logger.info({ name }, 'MCP server removed from registry');
+  }
+
   // --- Private ---
+
+  private async loadRegistrySafe(): Promise<Registry | null> {
+    try {
+      return await loadRegistry(this.registryPath);
+    } catch (err) {
+      logger.warn({ err }, 'Failed to load MCP registry');
+      return null;
+    }
+  }
 
   private startOneServer(name: string, config: ServerConfig): void {
     if (config.transport === 'stdio') {

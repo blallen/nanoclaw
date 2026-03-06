@@ -540,6 +540,18 @@ async function main(): Promise<void> {
     syncGroupMetadata: (force) => whatsapp?.syncGroupMetadata(force) ?? Promise.resolve(),
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
+    addMcpServer: mcpBridgeManager
+      ? (name, config) => { mcpBridgeManager!.addServer(name, config); }
+      : undefined,
+    removeMcpServer: mcpBridgeManager
+      ? (name) => { mcpBridgeManager!.removeServer(name); }
+      : undefined,
+    restartMcpServer: mcpBridgeManager
+      ? (name) => { mcpBridgeManager!.restartServer(name); }
+      : undefined,
+    restartAllMcpServers: mcpBridgeManager
+      ? () => { mcpBridgeManager!.stopAll(); mcpBridgeManager!.start(); }
+      : undefined,
   });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
