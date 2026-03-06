@@ -135,6 +135,16 @@ function buildVolumeMounts(
         readonly: true,
       });
     }
+
+    // Design docs and plans (read-only for non-main)
+    const plansDir = path.join(projectRoot, 'docs', 'plans');
+    if (fs.existsSync(plansDir)) {
+      mounts.push({
+        hostPath: plansDir,
+        containerPath: '/workspace/plans',
+        readonly: true,
+      });
+    }
   }
 
   // Per-group Claude sessions directory (isolated from other groups)
