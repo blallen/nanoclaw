@@ -413,6 +413,10 @@ async function runQuery(
     log(`Additional directories: ${extraDirs.join(', ')}`);
   }
 
+  // Call loadMcpServers once, use for both mcpServers and allowedTools
+  const remoteMcpServers = loadMcpServers();
+  const mcpWildcards = Object.keys(remoteMcpServers).map(name => `mcp__${name}__*`);
+
   for await (const message of query({
     prompt: stream,
     options: {
@@ -432,7 +436,7 @@ async function runQuery(
         'TodoWrite', 'ToolSearch', 'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
-        'mcp__apple-events__*',
+        ...mcpWildcards,
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -448,16 +452,7 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
-        ...(process.env.NANOCLAW_MCP_HOST ? {
-          'apple-events': {
-            command: 'npx',
-            args: [
-              'mcp-remote',
-              `http://${process.env.NANOCLAW_MCP_HOST}:${process.env.NANOCLAW_MCP_PORT || '7891'}/mcp`,
-              '--allow-http',
-            ],
-          },
-        } : {}),
+        ...remoteMcpServers,
       },
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook()] }],
@@ -498,6 +493,45 @@ async function runQuery(
   ipcPolling = false;
   log(`Query done. Messages: ${messageCount}, results: ${resultCount}, lastAssistantUuid: ${lastAssistantUuid || 'none'}, closedDuringQuery: ${closedDuringQuery}`);
   return { newSessionId, lastAssistantUuid, closedDuringQuery };
+}
+
+interface McpServersSnapshot {
+  servers: Record<string, { url: string }>;
+}
+
+function loadMcpServers(): Record<string, { command: string; args: string[] }> {
+  const snapshotPath = '/workspace/ipc/mcp_servers.json';
+  const mcpServers: Record<string, { command: string; args: string[] }> = {};
+
+  try {
+    if (fs.existsSync(snapshotPath)) {
+      const snapshot: McpServersSnapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf-8'));
+      for (const [name, config] of Object.entries(snapshot.servers)) {
+        mcpServers[name] = {
+          command: 'npx',
+          args: ['mcp-remote', config.url, '--allow-http'],
+        };
+      }
+      log(`Loaded ${Object.keys(mcpServers).length} MCP servers from snapshot`);
+    }
+  } catch (err) {
+    log(`Failed to load MCP servers snapshot: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Fallback: if no snapshot but env vars set, use legacy single-server config
+  if (Object.keys(mcpServers).length === 0 && process.env.NANOCLAW_MCP_HOST) {
+    mcpServers['apple-events'] = {
+      command: 'npx',
+      args: [
+        'mcp-remote',
+        `http://${process.env.NANOCLAW_MCP_HOST}:${process.env.NANOCLAW_MCP_PORT || '7891'}/mcp`,
+        '--allow-http',
+      ],
+    };
+    log('Using legacy MCP config from env vars');
+  }
+
+  return mcpServers;
 }
 
 async function main(): Promise<void> {
