@@ -274,6 +274,142 @@ Use available_groups.json to find the JID for a group. The folder name should be
   },
 );
 
+server.tool(
+  'list_mcp_servers',
+  'List all registered MCP servers and their status.',
+  {},
+  async () => {
+    const snapshotPath = '/workspace/ipc/mcp_servers.json';
+    try {
+      if (!fs.existsSync(snapshotPath)) {
+        return { content: [{ type: 'text' as const, text: 'No MCP servers configured.' }] };
+      }
+      const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf-8'));
+      const formatted = Object.entries(snapshot.servers)
+        .map(([name, config]: [string, any]) => `- ${name}: ${config.url}`)
+        .join('\n');
+      return { content: [{ type: 'text' as const, text: `MCP servers:\n${formatted}` }] };
+    } catch (err) {
+      return {
+        content: [{ type: 'text' as const, text: `Error reading MCP servers: ${err instanceof Error ? err.message : String(err)}` }],
+      };
+    }
+  },
+);
+
+server.tool(
+  'add_mcp_server',
+  `Add a new MCP server to the registry. The server will be started automatically.
+
+Transport types:
+- "stdio": A local process that speaks MCP over stdio. Requires command and args. A port will be auto-assigned.
+- "http": An existing HTTP MCP server. Requires url.
+
+Examples:
+- stdio: add_mcp_server({name: "notes", transport: "stdio", command: "node", args: "mcp-servers/notes/dist/index.js"})
+- http: add_mcp_server({name: "feedly", transport: "http", url: "http://localhost:3000/mcp"})`,
+  {
+    name: z.string().describe('Unique name for the server (lowercase, hyphens, e.g. "feedly")'),
+    transport: z.enum(['stdio', 'http']).describe('stdio=local process, http=existing HTTP server'),
+    command: z.string().optional().describe('(stdio only) Command to run the server'),
+    args: z.string().optional().describe('(stdio only) Space-separated args for the command'),
+    url: z.string().optional().describe('(http only) URL of the existing MCP server'),
+  },
+  async (params) => {
+    if (!isMain) {
+      return { content: [{ type: 'text' as const, text: 'Only the main group can manage MCP servers.' }], isError: true };
+    }
+    if (params.transport === 'stdio' && !params.command) {
+      return { content: [{ type: 'text' as const, text: 'stdio transport requires command.' }], isError: true };
+    }
+    if (params.transport === 'http' && !params.url) {
+      return { content: [{ type: 'text' as const, text: 'http transport requires url.' }], isError: true };
+    }
+
+    const data: Record<string, unknown> = {
+      type: 'add_mcp_server',
+      name: params.name,
+      transport: params.transport,
+      command: params.command,
+      args: params.args ? params.args.split(' ') : [],
+      url: params.url,
+      timestamp: new Date().toISOString(),
+    };
+
+    writeIpcFile(TASKS_DIR, data);
+
+    return {
+      content: [{ type: 'text' as const, text: `MCP server "${params.name}" add requested. It will start automatically.` }],
+    };
+  },
+);
+
+server.tool(
+  'remove_mcp_server',
+  'Remove an MCP server from the registry. The server will be stopped.',
+  {
+    name: z.string().describe('Name of the server to remove'),
+  },
+  async (params) => {
+    if (!isMain) {
+      return { content: [{ type: 'text' as const, text: 'Only the main group can manage MCP servers.' }], isError: true };
+    }
+
+    writeIpcFile(TASKS_DIR, {
+      type: 'remove_mcp_server',
+      name: params.name,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      content: [{ type: 'text' as const, text: `MCP server "${params.name}" removal requested.` }],
+    };
+  },
+);
+
+server.tool(
+  'restart_mcp_server',
+  'Restart a specific MCP server bridge. Use after editing server code.',
+  {
+    name: z.string().describe('Name of the server to restart'),
+  },
+  async (params) => {
+    if (!isMain) {
+      return { content: [{ type: 'text' as const, text: 'Only the main group can manage MCP servers.' }], isError: true };
+    }
+
+    writeIpcFile(TASKS_DIR, {
+      type: 'restart_mcp_server',
+      name: params.name,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      content: [{ type: 'text' as const, text: `MCP server "${params.name}" restart requested.` }],
+    };
+  },
+);
+
+server.tool(
+  'restart_all_mcp_servers',
+  'Re-read the registry and reconcile all MCP server bridges. Use after editing registry.json directly.',
+  {},
+  async () => {
+    if (!isMain) {
+      return { content: [{ type: 'text' as const, text: 'Only the main group can manage MCP servers.' }], isError: true };
+    }
+
+    writeIpcFile(TASKS_DIR, {
+      type: 'restart_all_mcp_servers',
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      content: [{ type: 'text' as const, text: 'Full MCP server reconciliation requested.' }],
+    };
+  },
+);
+
 // Start the stdio transport
 const transport = new StdioServerTransport();
 await server.connect(transport);
