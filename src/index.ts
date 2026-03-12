@@ -10,7 +10,7 @@ import {
   MCP_BRIDGE_ENABLED,
   MCP_REGISTRY_PATH,
   POLL_INTERVAL,
-  TELEGRAM_BOT_TOKEN,
+  TELEGRAM_BOT_TOKENS,
   TELEGRAM_ONLY,
   TRIGGER_PATTERN,
 } from './config.js';
@@ -509,8 +509,8 @@ async function main(): Promise<void> {
     await whatsapp.connect();
   }
 
-  if (TELEGRAM_BOT_TOKEN) {
-    const telegram = new TelegramChannel(TELEGRAM_BOT_TOKEN, channelOpts);
+  for (const token of TELEGRAM_BOT_TOKENS) {
+    const telegram = new TelegramChannel(token, channelOpts);
     channels.push(telegram);
     await telegram.connect();
   }

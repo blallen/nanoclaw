@@ -30,3 +30,6 @@ groups/global/*
 .vscode/
 
 agents-sdk-docs
+
+# mcp stuff that is big
+vendor/CheICalMCP
