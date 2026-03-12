@@ -6,6 +6,13 @@
       "args": [],
       "port": 7891,
       "enabled": true
+    },
+    "messages": {
+      "transport": "stdio",
+      "command": "node",
+      "args": ["mcp-servers/messages/dist/index.js"],
+      "port": 7892,
+      "enabled": true
     }
   }
 }

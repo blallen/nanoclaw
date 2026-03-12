@@ -11,8 +11,13 @@ export const ASSISTANT_NAME =
   process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
 export const ASSISTANT_HAS_OWN_NUMBER =
   (process.env.ASSISTANT_HAS_OWN_NUMBER || envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
-export const TELEGRAM_BOT_TOKEN =
-  process.env.TELEGRAM_BOT_TOKEN || envConfig.TELEGRAM_BOT_TOKEN || '';
+// Support comma-separated tokens for multiple bots
+const rawTokens = process.env.TELEGRAM_BOT_TOKEN || envConfig.TELEGRAM_BOT_TOKEN || '';
+export const TELEGRAM_BOT_TOKENS: string[] = rawTokens
+  .split(',')
+  .map((t) => t.trim())
+  .filter(Boolean);
+export const TELEGRAM_BOT_TOKEN = TELEGRAM_BOT_TOKENS[0] || '';
 export const TELEGRAM_ONLY =
   (process.env.TELEGRAM_ONLY || envConfig.TELEGRAM_ONLY) === 'true';
 export const MCP_BRIDGE_ENABLED =
