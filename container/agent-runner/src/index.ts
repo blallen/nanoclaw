@@ -405,7 +405,6 @@ async function runQuery(
   let lastAssistantUuid: string | undefined;
   let messageCount = 0;
   let resultCount = 0;
-  let lastResultText: string | null = null;
 
   // Load global CLAUDE.md as additional system context (shared across all groups)
   const globalClaudeMdPath = '/workspace/global/CLAUDE.md';
@@ -499,28 +498,21 @@ async function runQuery(
       resultCount++;
       const textResult = 'result' in message ? (message as { result?: string }).result : null;
       log(`Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
-      // Accumulate last result text; emit null to keep idle timer alive
-      if (textResult) lastResultText = textResult;
+      // Check if send_message was used — if so, suppress this result
+      const wasSent = checkAndClearSentFlag();
+      const emitText = (textResult && !wasSent) ? textResult : null;
+      if (wasSent) {
+        log('Suppressing result — send_message was used during this query');
+      }
       writeOutput({
         status: 'success',
-        result: null,
+        result: emitText,
         newSessionId
       });
     }
   }
 
   ipcPolling = false;
-
-  // Emit the final accumulated result (or suppress if send_message was used)
-  const wasSent = checkAndClearSentFlag();
-  if (lastResultText && !wasSent) {
-    log('Emitting final accumulated result to host');
-    writeOutput({ status: 'success', result: lastResultText, newSessionId });
-  } else if (wasSent) {
-    log('Suppressing final result — send_message was used during this query');
-  } else {
-    log('No result text accumulated');
-  }
 
   log(`Query done. Messages: ${messageCount}, results: ${resultCount}, lastAssistantUuid: ${lastAssistantUuid || 'none'}, closedDuringQuery: ${closedDuringQuery}`);
   return { newSessionId, lastAssistantUuid, closedDuringQuery };

@@ -191,9 +191,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         if (formatted) await channel.sendMessage(chatJid, formatted);
         outputSentToUser = true;
       }
-      // Only reset idle timer on actual results, not session-update markers (result: null)
-      resetIdleTimer();
     }
+
+    // Reset idle timer on ALL output markers (including null results)
+    // to keep container alive while agent-runner accumulates results
+    resetIdleTimer();
 
     if (result.status === 'error') {
       hadError = true;
