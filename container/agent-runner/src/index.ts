@@ -56,6 +56,7 @@ interface SDKUserMessage {
 
 const IPC_INPUT_DIR = '/workspace/ipc/input';
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
+const IPC_SENT_SENTINEL = path.join(IPC_INPUT_DIR, '_sent');
 const IPC_POLL_MS = 500;
 
 /**
@@ -294,6 +295,18 @@ function shouldClose(): boolean {
 }
 
 /**
+ * Check if send_message was used during this query turn.
+ * Consumes the sentinel so subsequent turns start clean.
+ */
+function checkAndClearSentFlag(): boolean {
+  if (fs.existsSync(IPC_SENT_SENTINEL)) {
+    try { fs.unlinkSync(IPC_SENT_SENTINEL); } catch { /* ignore */ }
+    return true;
+  }
+  return false;
+}
+
+/**
  * Drain all pending IPC input messages.
  * Returns messages found, or empty array.
  */
@@ -364,6 +377,9 @@ async function runQuery(
   const stream = new MessageStream();
   stream.push(prompt);
 
+  // Clean up stale _sent sentinel from previous turn
+  try { fs.unlinkSync(IPC_SENT_SENTINEL); } catch { /* ignore */ }
+
   // Poll IPC for follow-up messages and _close sentinel during the query
   let ipcPolling = true;
   let closedDuringQuery = false;
@@ -389,6 +405,7 @@ async function runQuery(
   let lastAssistantUuid: string | undefined;
   let messageCount = 0;
   let resultCount = 0;
+  let lastResultText: string | null = null;
 
   // Load global CLAUDE.md as additional system context (shared across all groups)
   const globalClaudeMdPath = '/workspace/global/CLAUDE.md';
@@ -482,15 +499,29 @@ async function runQuery(
       resultCount++;
       const textResult = 'result' in message ? (message as { result?: string }).result : null;
       log(`Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
+      // Accumulate last result text; emit null to keep idle timer alive
+      if (textResult) lastResultText = textResult;
       writeOutput({
         status: 'success',
-        result: textResult || null,
+        result: null,
         newSessionId
       });
     }
   }
 
   ipcPolling = false;
+
+  // Emit the final accumulated result (or suppress if send_message was used)
+  const wasSent = checkAndClearSentFlag();
+  if (lastResultText && !wasSent) {
+    log('Emitting final accumulated result to host');
+    writeOutput({ status: 'success', result: lastResultText, newSessionId });
+  } else if (wasSent) {
+    log('Suppressing final result — send_message was used during this query');
+  } else {
+    log('No result text accumulated');
+  }
+
   log(`Query done. Messages: ${messageCount}, results: ${resultCount}, lastAssistantUuid: ${lastAssistantUuid || 'none'}, closedDuringQuery: ${closedDuringQuery}`);
   return { newSessionId, lastAssistantUuid, closedDuringQuery };
 }
@@ -567,6 +598,8 @@ async function main(): Promise<void> {
 
   // Clean up stale _close sentinel from previous container runs
   try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }
+  // Clean up stale _sent sentinel from previous container runs
+  try { fs.unlinkSync(IPC_SENT_SENTINEL); } catch { /* ignore */ }
 
   // Build initial prompt (drain any pending IPC messages too)
   let prompt = containerInput.prompt;

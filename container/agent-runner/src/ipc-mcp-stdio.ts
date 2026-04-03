@@ -14,6 +14,7 @@ import { CronExpressionParser } from 'cron-parser';
 const IPC_DIR = '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
 const TASKS_DIR = path.join(IPC_DIR, 'tasks');
+const IPC_SENT_SENTINEL = path.join(IPC_DIR, 'input', '_sent');
 
 // Context from environment variables (set by the agent runner)
 const chatJid = process.env.NANOCLAW_CHAT_JID!;
@@ -57,6 +58,9 @@ server.tool(
     };
 
     writeIpcFile(MESSAGES_DIR, data);
+
+    // Signal to agent-runner that send_message was used this turn
+    fs.writeFileSync(IPC_SENT_SENTINEL, '');
 
     return { content: [{ type: 'text' as const, text: 'Message sent.' }] };
   },
