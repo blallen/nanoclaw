@@ -139,8 +139,118 @@ export class TelegramChannel implements Channel {
       });
     };
 
-    this.bot.on("message:photo", (ctx) => storeNonText(ctx, "[Photo]"));
-    this.bot.on("message:video", (ctx) => storeNonText(ctx, "[Video]"));
+    this.bot.on("message:photo", async (ctx) => {
+      const chatJid = `tg:${ctx.chat.id}`;
+      const group = this.opts.registeredGroups()[chatJid];
+      if (!group) return;
+
+      const timestamp = new Date(ctx.message.date * 1000).toISOString();
+      const senderName =
+        ctx.from?.first_name ||
+        ctx.from?.username ||
+        ctx.from?.id.toString() ||
+        "Unknown";
+      const sender = ctx.from?.id.toString() || "";
+      const msgId = ctx.message.message_id.toString();
+      const caption = ctx.message.caption || "";
+      const chatName =
+        ctx.chat.type === "private"
+          ? senderName
+          : (ctx.chat as any).title || chatJid;
+
+      this.opts.onChatMetadata(chatJid, timestamp, chatName);
+
+      try {
+        // Check file size (Telegram bot API limit is 20MB)
+        const photos = ctx.message.photo;
+        const photo = photos[photos.length - 1]; // Highest resolution
+        if (photo.file_size && photo.file_size > 20_000_000) {
+          logger.warn({ chatJid, size: photo.file_size }, "Photo too large to download");
+          storeNonText(ctx, "[Photo - too large]");
+          return;
+        }
+
+        // Download to IPC images directory
+        const imagesDir = path.join(DATA_DIR, 'ipc', group.folder, 'images');
+        fs.mkdirSync(imagesDir, { recursive: true });
+        const file = await ctx.getFile();
+        const ext = file.file_path?.split('.').pop() || 'jpg';
+        const destPath = path.join(imagesDir, `${msgId}.${ext}`);
+        await file.download(destPath);
+
+        logger.info({ chatJid, path: destPath }, "Photo downloaded");
+
+        this.opts.onMessage(chatJid, {
+          id: msgId,
+          chat_jid: chatJid,
+          sender,
+          sender_name: senderName,
+          content: `[Photo: /workspace/ipc/images/${msgId}.${ext}]${caption ? " " + caption : ""}`,
+          timestamp,
+          is_from_me: false,
+        });
+      } catch (err) {
+        logger.error({ err, chatJid }, "Failed to download Telegram photo");
+        storeNonText(ctx, "[Photo - download failed]");
+      }
+    });
+    this.bot.on("message:video", async (ctx) => {
+      const chatJid = `tg:${ctx.chat.id}`;
+      const group = this.opts.registeredGroups()[chatJid];
+      if (!group) return;
+
+      const timestamp = new Date(ctx.message.date * 1000).toISOString();
+      const senderName =
+        ctx.from?.first_name ||
+        ctx.from?.username ||
+        ctx.from?.id.toString() ||
+        "Unknown";
+      const sender = ctx.from?.id.toString() || "";
+      const msgId = ctx.message.message_id.toString();
+      const caption = ctx.message.caption || "";
+      const chatName =
+        ctx.chat.type === "private"
+          ? senderName
+          : (ctx.chat as any).title || chatJid;
+
+      this.opts.onChatMetadata(chatJid, timestamp, chatName);
+
+      const thumbnail = ctx.message.video?.thumbnail;
+      if (!thumbnail) {
+        storeNonText(ctx, "[Video]");
+        return;
+      }
+
+      try {
+        // Download thumbnail to IPC images directory
+        const imagesDir = path.join(DATA_DIR, 'ipc', group.folder, 'images');
+        fs.mkdirSync(imagesDir, { recursive: true });
+        const fileInfo = await this.bot!.api.getFile(thumbnail.file_id);
+        const ext = fileInfo.file_path?.split('.').pop() || 'jpg';
+        const destPath = path.join(imagesDir, `${msgId}.${ext}`);
+
+        // Download using the file URL directly since getFile() returns raw API response
+        const fileUrl = `https://api.telegram.org/file/bot${this.botToken}/${fileInfo.file_path}`;
+        const response = await fetch(fileUrl);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        fs.writeFileSync(destPath, buffer);
+
+        logger.info({ chatJid, path: destPath }, "Video thumbnail downloaded");
+
+        this.opts.onMessage(chatJid, {
+          id: msgId,
+          chat_jid: chatJid,
+          sender,
+          sender_name: senderName,
+          content: `[Video (preview frame only, not the full video): /workspace/ipc/images/${msgId}.${ext}]${caption ? " " + caption : ""}`,
+          timestamp,
+          is_from_me: false,
+        });
+      } catch (err) {
+        logger.error({ err, chatJid }, "Failed to download video thumbnail");
+        storeNonText(ctx, "[Video]");
+      }
+    });
     this.bot.on("message:voice", (ctx) => storeNonText(ctx, "[Voice message]"));
     this.bot.on("message:audio", (ctx) => storeNonText(ctx, "[Audio]"));
     this.bot.on("message:document", (ctx) => {
