@@ -225,15 +225,14 @@ export class TelegramChannel implements Channel {
         // Download thumbnail to IPC images directory
         const imagesDir = path.join(DATA_DIR, 'ipc', group.folder, 'images');
         fs.mkdirSync(imagesDir, { recursive: true });
+        // api.getFile() returns raw File without download() method (FileFlavor only
+        // extends ctx.getFile()), so we download via the Telegram file URL directly
         const fileInfo = await this.bot!.api.getFile(thumbnail.file_id);
         const ext = fileInfo.file_path?.split('.').pop() || 'jpg';
         const destPath = path.join(imagesDir, `${msgId}.${ext}`);
-
-        // Download using the file URL directly since getFile() returns raw API response
         const fileUrl = `https://api.telegram.org/file/bot${this.botToken}/${fileInfo.file_path}`;
         const response = await fetch(fileUrl);
-        const buffer = Buffer.from(await response.arrayBuffer());
-        fs.writeFileSync(destPath, buffer);
+        fs.writeFileSync(destPath, Buffer.from(await response.arrayBuffer()));
 
         logger.info({ chatJid, path: destPath }, "Video thumbnail downloaded");
 
