@@ -1,7 +1,11 @@
 import { Bot } from "grammy";
+import { hydrateFiles } from "@grammyjs/files";
+import fs from "fs";
+import path from "path";
 
 import {
   ASSISTANT_NAME,
+  DATA_DIR,
   TRIGGER_PATTERN,
 } from "../config.js";
 import { logger } from "../logger.js";
@@ -28,6 +32,7 @@ export class TelegramChannel implements Channel {
 
   async connect(): Promise<void> {
     this.bot = new Bot(this.botToken);
+    this.bot.api.config.use(hydrateFiles(this.botToken));
 
     this.bot.command("chatid", (ctx) => {
       const chatId = ctx.chat.id;
