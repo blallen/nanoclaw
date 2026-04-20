@@ -1,5 +1,5 @@
-import { Bot } from "grammy";
-import { hydrateFiles } from "@grammyjs/files";
+import { Bot, type Context } from "grammy";
+import { hydrateFiles, type FileFlavor } from "@grammyjs/files";
 import fs from "fs";
 import path from "path";
 
@@ -21,7 +21,7 @@ export class TelegramChannel implements Channel {
   name = "telegram";
   prefixAssistantName = false;
 
-  private bot: Bot | null = null;
+  private bot: Bot<FileFlavor<Context>> | null = null;
   private opts: TelegramChannelOpts;
   private botToken: string;
 
@@ -31,7 +31,7 @@ export class TelegramChannel implements Channel {
   }
 
   async connect(): Promise<void> {
-    this.bot = new Bot(this.botToken);
+    this.bot = new Bot<FileFlavor<Context>>(this.botToken);
     this.bot.api.config.use(hydrateFiles(this.botToken));
 
     this.bot.command("chatid", (ctx) => {
