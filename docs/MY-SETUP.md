@@ -109,6 +109,76 @@ The binary is vendored at `vendor/CheICalMCP` (pinned to a specific release). It
 
 ---
 
+## Remote Control (Taskie phone endpoint)
+
+Runs `claude remote-control --name Taskie` as a persistent, launchd-managed process in the
+`groups/main` workspace. This surfaces an isolated **Taskie** endpoint in the Claude mobile app
+(and at claude.ai/code), completely separate from your personal Claude Code. It shares the same
+isolated `CLAUDE_CONFIG_DIR` (`data/sessions/main/.claude`) and `groups/main` `.claude` config
+(skills, nanoclaw MCP, hooks) as the Telegram host runner, so the phone "Taskie" behaves like the
+Telegram Taskie.
+
+### Committed files
+
+| File | Purpose |
+|------|---------|
+| `launchd/com.nanoclaw.remote.sh` | Wrapper that `cd`s into `groups/main`, sources `.env` for the OAuth token (keeping it out of any plist), exports the isolated `CLAUDE_CONFIG_DIR` + `NANOCLAW_*` context, then `exec`s `claude remote-control --name Taskie`. |
+| `launchd/com.nanoclaw.remote.plist` | launchd agent (`com.nanoclaw.remote`) that runs the wrapper with `RunAtLoad`/`KeepAlive`, logging to `logs/remote-control.log`. No secrets. |
+
+### Install / start
+
+```bash
+cp launchd/com.nanoclaw.remote.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.nanoclaw.remote.plist
+```
+
+Then open the Claude mobile app (or claude.ai/code) and connect to the **Taskie** endpoint.
+
+### Check it
+
+```bash
+tail -f logs/remote-control.log        # connect URL / ready line and session activity
+tail -f logs/remote-control.error.log  # auth or startup errors
+```
+
+### Required: `NANOCLAW_CHAT_JID` for phone → Telegram `send_message`
+
+The headless Telegram runner sets `NANOCLAW_CHAT_JID` per-message from the live chat, but this
+long-running remote-control process needs it **statically** so that `send_message` (the nanoclaw
+MCP) routes to the main Telegram chat. Add it to `.env`:
+
+```
+NANOCLAW_CHAT_JID=tg:8403395613
+```
+
+(`tg:8403395613` is the JID registered for `folder='main'` in `store/messages.db` — confirm before
+relying on it.) Without it, phone-initiated `send_message` calls have no chat to route to.
+
+### Auth note (important)
+
+Remote Control performs an extra **organization eligibility** check that ordinary headless runs do
+not. A token-only isolated config (`CLAUDE_CODE_OAUTH_TOKEN` env var with no account metadata in the
+config dir) is enough to authenticate headless runs but **not** Remote Control — it fails with
+`Unable to determine your organization for Remote Control eligibility. Run 'claude auth login' to
+refresh your account information.` To fix, populate the isolated config's account/org metadata once
+by running an interactive login against the isolated config dir:
+
+```bash
+CLAUDE_CONFIG_DIR=data/sessions/main/.claude claude auth login   # or /login inside an interactive session
+```
+
+After that login writes account/org info into the isolated config, the launchd endpoint will start
+cleanly.
+
+### Concurrency
+
+The remote-control session is a **separate process** that shares the same `groups/main` files as the
+Telegram path. The orchestrator's `GroupQueue` only serializes the orchestrator's own runs — it does
+not coordinate with this process. Avoid heavy concurrent edits from phone + Telegram at the same
+instant to prevent stepping on the same files.
+
+---
+
 ## Key Files (fork-specific)
 
 | File | What's custom |
