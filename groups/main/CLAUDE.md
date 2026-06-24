@@ -98,19 +98,19 @@ Keep messages clean and readable for Telegram.
 
 This is the **main channel**, which has elevated privileges.
 
-## Container Mounts
+## Filesystem & Paths
 
-Main has access to the entire project:
+You run **on the host** (not in a container). Your current working directory is `groups/main/` (referred to as `.`), and the entire **project root is reachable at `../../`** (granted via `--add-dir`). Main has access to the whole project for admin tasks.
 
-| Container Path | Host Path | Access |
-|----------------|-----------|--------|
-| `/workspace/project` | Project root | read-write |
-| `/workspace/group` | `groups/main/` | read-write |
+| Path | Location | Access |
+|------|----------|--------|
+| `.` | the current directory (`groups/main/`) | read-write |
+| `../../` | Project root | read-write |
 
-Key paths inside the container:
-- `/workspace/project/store/messages.db` - SQLite database
-- `/workspace/project/store/messages.db` (registered_groups table) - Group config
-- `/workspace/project/groups/` - All group folders
+Key paths (relative to your cwd in `groups/main/`):
+- `../../store/messages.db` - SQLite database
+- `../../store/messages.db` (registered_groups table) - Group config
+- `../../groups/` - All group folders
 
 ---
 
@@ -118,14 +118,14 @@ Key paths inside the container:
 
 ### Finding Available Groups
 
-Available groups are provided in `/workspace/ipc/available_groups.json`.
+Available groups are provided in `../../data/ipc/main/available_groups.json`.
 
 Groups are ordered by most recent activity. The list is synced periodically.
 
-If a group the user mentions isn't in the list, request a fresh sync:
+If a group the user mentions isn't in the list, request a fresh sync (the IPC file is an implementation detail — prefer the nanoclaw MCP tools where available):
 
 ```bash
-echo '{"type": "refresh_groups"}' > /workspace/ipc/tasks/refresh_$(date +%s).json
+echo '{"type": "refresh_groups"}' > ../../data/ipc/main/tasks/refresh_$(date +%s).json
 ```
 
 Then wait a moment and re-read `available_groups.json`.
@@ -133,7 +133,7 @@ Then wait a moment and re-read `available_groups.json`.
 **Fallback**: Query the SQLite database directly:
 
 ```bash
-sqlite3 /workspace/project/store/messages.db "
+sqlite3 ../../store/messages.db "
   SELECT jid, name, last_message_time
   FROM chats
   WHERE jid != '__group_sync__'
@@ -163,8 +163,8 @@ Fields:
 ### Adding a Group
 
 1. Query the database to find the group's JID
-2. Use the `register_group` IPC tool
-3. Create the group folder: `/workspace/project/groups/{folder-name}/`
+2. Use the `register_group` IPC tool (the preferred way — `mcp__nanoclaw__register_group`)
+3. Create the group folder: `../../groups/{folder-name}/`
 4. Optionally create an initial `CLAUDE.md` for the group
 
 Example folder name conventions:
@@ -188,7 +188,7 @@ Query the `registered_groups` table or use the `list_tasks` tool for an overview
 
 ## Global Memory
 
-You can read and write to `/workspace/project/groups/global/CLAUDE.md` for facts that should apply to all groups. Only update global memory when explicitly asked to "remember this globally" or similar.
+You can read and write to `../../groups/global/CLAUDE.md` for facts that should apply to all groups. Only update global memory when explicitly asked to "remember this globally" or similar.
 
 ---
 

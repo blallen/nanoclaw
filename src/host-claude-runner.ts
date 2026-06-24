@@ -44,8 +44,19 @@ const CLAUDE_BIN = process.env.NANOCLAW_CLAUDE_BIN || '/Users/ballen/.local/bin/
  * and size issues with multiline Telegram prompts.
  *
  * `--resume <id>` is added only when a sessionId is present.
+ *
+ * `--add-dir <projectRoot>` is added when a project root is supplied. The host
+ * agent runs with cwd = groups/main, but main needs the container's old reach
+ * over the ENTIRE project root (SQLite DB, group folders, global memory) for
+ * admin tasks. `--add-dir` grants tool access to that directory.
  */
-export function buildClaudeArgs({ sessionId }: { sessionId?: string }): string[] {
+export function buildClaudeArgs({
+  sessionId,
+  projectRoot,
+}: {
+  sessionId?: string;
+  projectRoot?: string;
+}): string[] {
   return [
     '-p',
     '--output-format',
@@ -58,6 +69,7 @@ export function buildClaudeArgs({ sessionId }: { sessionId?: string }): string[]
     // (groups/<folder>/.mcp.json, written by writeMcpConfig) auto-loads the
     // `nanoclaw` server. Adding --strict WITHOUT --mcp-config would load ZERO
     // servers and break send_message.
+    ...(projectRoot ? ['--add-dir', projectRoot] : []),
     ...(sessionId ? ['--resume', sessionId] : []),
   ];
 }
@@ -129,7 +141,7 @@ export async function runHostClaudeAgent(
   // here rather than committed.
   writeMcpConfig(group.folder);
 
-  const args = buildClaudeArgs({ sessionId: input.sessionId });
+  const args = buildClaudeArgs({ sessionId: input.sessionId, projectRoot: process.cwd() });
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const name = `nanoclaw-host-${safeName}-${Date.now()}`;
 

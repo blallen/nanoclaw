@@ -47,7 +47,7 @@ Taskie's hooks now live in `groups/main/.claude/` as real Claude Code command ho
 
 ### Remote Control (phone endpoint)
 
-A second, long-lived `claude remote-control --name Taskie` process runs in `groups/main` with the **same isolated `CLAUDE_CONFIG_DIR`**, so it loads identical skills/MCP/memory and appears as a distinct **"Taskie"** endpoint in the Claude mobile app (separate from your personal Claude Code). Telegram (automated/headless) and the phone (interactive) are two drivers over the **same workspace + `CLAUDE.md` memory** — they share state via files, not a single live conversation. Per-`main` work is serialized through the existing `GroupQueue` so the two drivers don't race. This endpoint is intended to be launchd-managed alongside the orchestrator; the live cutover (loading the remote-control LaunchAgent + one-time auth of the isolated config dir) is performed by hand, see the design doc §6.
+See the [Remote Control (Taskie phone endpoint)](#remote-control-taskie-phone-endpoint) section below.
 
 ### Sandboxing change
 
@@ -117,6 +117,11 @@ Runs `claude remote-control --name Taskie` as a persistent, launchd-managed proc
 isolated `CLAUDE_CONFIG_DIR` (`data/sessions/main/.claude`) and `groups/main` `.claude` config
 (skills, nanoclaw MCP, hooks) as the Telegram host runner, so the phone "Taskie" behaves like the
 Telegram Taskie.
+
+Telegram (automated/headless) and the phone (interactive) are two **drivers over the same
+workspace + `CLAUDE.md` memory** — they share state via files, not a single live conversation.
+The live cutover (loading the remote-control LaunchAgent + the one-time auth of the isolated
+config dir) is performed by hand; see the design doc §6.
 
 ### Committed files
 

@@ -25,6 +25,7 @@ The **main** group runs as a **host `claude` harness** (full Claude Code, not th
 | `src/container-runner.ts` | Spawns agent containers with mounts (non-main groups) |
 | `src/task-scheduler.ts` | Runs scheduled tasks |
 | `src/db.ts` | SQLite operations |
+| `launchd/com.nanoclaw.remote.plist` (+ `.remote.sh`) | Taskie Remote Control phone endpoint: launchd agent + wrapper that runs `claude remote-control --name Taskie` in `groups/main` |
 | `groups/main/.claude/` | Main harness config: `settings.json` + `hooks/` (sanitize-bash, archive-precompact) |
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
 | `container/skills/agent-browser.md` | Browser automation tool (container agents via Bash; host re-homing is a follow-up) |
