@@ -1,0 +1,29 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD": "1"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/homebrew/Cellar/node@22/22.22.0/bin/node ${CLAUDE_PROJECT_DIR}/.claude/hooks/sanitize-bash.mjs"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/opt/homebrew/Cellar/node@22/22.22.0/bin/node ${CLAUDE_PROJECT_DIR}/.claude/hooks/archive-precompact.mjs"
+          }
+        ]
+      }
+    ]
+  }
+}

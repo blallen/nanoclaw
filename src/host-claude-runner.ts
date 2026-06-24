@@ -53,9 +53,40 @@ export function buildClaudeArgs({ sessionId }: { sessionId?: string }): string[]
     '--verbose',
     '--permission-mode',
     'bypassPermissions',
-    '--strict-mcp-config',
+    // NOTE: no --strict-mcp-config. CLAUDE_CONFIG_DIR isolation already excludes
+    // the user's personal MCP servers, and a project-level `.mcp.json` at cwd
+    // (groups/<folder>/.mcp.json, written by writeMcpConfig) auto-loads the
+    // `nanoclaw` server. Adding --strict WITHOUT --mcp-config would load ZERO
+    // servers and break send_message.
     ...(sessionId ? ['--resume', sessionId] : []),
   ];
+}
+
+/**
+ * Write the project-level `.mcp.json` for a group's workspace so that `claude`
+ * (run with cwd = groups/<folder>) auto-loads the host-runnable `nanoclaw`
+ * MCP server. Idempotent — overwritten each run.
+ *
+ * Uses absolute paths generated at runtime (node binary + built server) so the
+ * config stays correct across machines/worktrees and is NOT committed.
+ *
+ * No `env` block: the stdio MCP server inherits the parent claude process env,
+ * and the caller (runHostClaudeAgent / the remote-control plist) supplies the
+ * NANOCLAW_* vars on the claude process directly.
+ */
+export function writeMcpConfig(groupFolder: string): void {
+  const groupDir = path.join(GROUPS_DIR, groupFolder);
+  fs.mkdirSync(groupDir, { recursive: true });
+  const serverPath = path.join(process.cwd(), 'dist/nanoclaw-mcp-server.js');
+  const config = {
+    mcpServers: {
+      nanoclaw: {
+        command: process.execPath,
+        args: [serverPath],
+      },
+    },
+  };
+  fs.writeFileSync(path.join(groupDir, '.mcp.json'), JSON.stringify(config, null, 2));
 }
 
 /**
@@ -92,6 +123,11 @@ export async function runHostClaudeAgent(
   // Reuses the same path the container path uses for this group's sessions.
   const configDir = path.join(DATA_DIR, 'sessions', group.folder, '.claude');
   fs.mkdirSync(configDir, { recursive: true });
+
+  // Generate the project-level .mcp.json so claude (cwd = groupDir) auto-loads
+  // the host nanoclaw MCP server. Paths are machine-specific, so it's generated
+  // here rather than committed.
+  writeMcpConfig(group.folder);
 
   const args = buildClaudeArgs({ sessionId: input.sessionId });
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');

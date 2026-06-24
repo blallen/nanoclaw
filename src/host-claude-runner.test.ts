@@ -9,10 +9,13 @@ describe('buildClaudeArgs', () => {
     expect(a.join(' ')).toContain('--output-format stream-json');
     expect(a).toContain('--verbose');
   });
-  it('runs unattended via bypassPermissions and strict mcp config', () => {
+  it('runs unattended via bypassPermissions without strict mcp config', () => {
     const a = buildClaudeArgs({}).join(' ');
     expect(a).toContain('--permission-mode bypassPermissions');
-    expect(a).toContain('--strict-mcp-config');
+    // No --strict-mcp-config: isolation (CLAUDE_CONFIG_DIR) + cwd auto-load of
+    // the project .mcp.json handle MCP. --strict without --mcp-config would load
+    // zero servers and break send_message.
+    expect(a).not.toContain('--strict-mcp-config');
   });
   it('adds --resume only when a sessionId is provided', () => {
     expect(buildClaudeArgs({}).join(' ')).not.toContain('--resume');

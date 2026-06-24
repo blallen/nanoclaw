@@ -17,6 +17,10 @@ groups/main/*
 groups/global/*
 !groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
+# Generated per-run MCP config (machine-specific absolute paths) — never commit
+groups/*/.mcp.json
+# But DO commit the static .claude config (settings + ported hooks) for groups/main
+!groups/main/.claude/
 
 # Secrets
 *.keys.json
