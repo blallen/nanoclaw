@@ -10,7 +10,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/homebrew/Cellar/node@22/22.22.0/bin/node ${CLAUDE_PROJECT_DIR}/.claude/hooks/sanitize-bash.mjs"
+            "command": "/opt/homebrew/opt/node@22/bin/node ${CLAUDE_PROJECT_DIR}/.claude/hooks/sanitize-bash.mjs"
           }
         ]
       }
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/opt/homebrew/Cellar/node@22/22.22.0/bin/node ${CLAUDE_PROJECT_DIR}/.claude/hooks/archive-precompact.mjs"
+            "command": "/opt/homebrew/opt/node@22/bin/node ${CLAUDE_PROJECT_DIR}/.claude/hooks/archive-precompact.mjs"
           }
         ]
       }

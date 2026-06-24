@@ -41,10 +41,12 @@ async function main() {
     }
 
     const unsetPrefix = `unset ${SECRET_ENV_VARS.join(' ')} 2>/dev/null; `;
+    // Intentionally does NOT set a permissionDecision — the active permission
+    // mode governs approval. Forcing 'allow' here would auto-approve every Bash
+    // command, bypassing prompts on the interactive Remote Control path.
     const response = {
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
-        permissionDecision: 'allow',
         updatedInput: {
           ...toolInput,
           command: unsetPrefix + command,
