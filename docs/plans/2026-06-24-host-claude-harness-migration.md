@@ -12,6 +12,17 @@
 
 ---
 
+## Task 0 ground truth (spike complete — verified on claude 2.1.190)
+
+These facts are confirmed; build against them (full notes: `docs/plans/scratch-claude-cli-notes.md`).
+
+- **Flags:** `-p`, `--output-format stream-json` (+ `--verbose`), `--input-format stream-json`, `-r/--resume <id>`, `--permission-mode bypassPermissions` (use for unattended), `--strict-mcp-config`. `claude remote-control` is real (`--name`, `--spawn same-dir` default, `--permission-mode`).
+- **stream-json shapes:** `system/init` carries `session_id` (+ `model`, `mcp_servers`, `plugins`); `assistant` carries `message.content[].text`; terminal `result` (`subtype:"success"`) carries the full `result` text + `session_id`. Ignore `system/hook_*`, `rate_limit_event`, `system/post_turn_summary`.
+- **Resume:** `--resume <id>` reuses the **same** session_id and recalls context → `db.ts` keeps one stable id per group.
+- **CONFIG ISOLATION (decided):** a default host run inherits the user's `~/.claude` (superpowers hook, personal MCP, 1M-ctx opus, $0.11/one-word reply). **Both Taskie processes must set `CLAUDE_CONFIG_DIR=<abs>/data/sessions/main/.claude`** (the existing per-group dir). Verified: this yields `mcp_servers: []`, `plugins: []`, no superpowers hook. A fresh config dir is **not logged in** — it must be authenticated once (see Task 1b). Project-level `groups/main/.claude/` + `groups/main/.mcp.json` still load and carry Taskie's hooks/MCP/skills. The user's personal Claude Code (default `~/.claude`) is untouched.
+
+---
+
 ## Conventions for this plan
 
 - Tests are vitest, colocated as `src/<name>.test.ts`. Run a single file with `npx vitest run src/<name>.test.ts`.
@@ -25,41 +36,40 @@
 
 No code. De-risk every later task by confirming exact flags and event shapes for THIS installed version (2.1.190). Record findings in a scratch file `docs/plans/scratch-claude-cli-notes.md` (deleted in the final task).
 
-**Step 1: Capture the relevant help surface**
+**✅ COMPLETE.** Findings recorded in the "Task 0 ground truth" section above and `docs/plans/scratch-claude-cli-notes.md`. Gate passed: stream-json shapes match assumptions and `remote-control` is real. One material addition surfaced — **config isolation via `CLAUDE_CONFIG_DIR`** — now threaded through Tasks 1b/3/4/6.
 
-Run and read:
-```bash
-claude --help
-claude --help | grep -iE 'output-format|input-format|resume|permission|sandbox|verbose|print'
-claude remote-control --help 2>&1 | head -40
-```
-Record: the exact flag spellings for print mode (`-p`/`--print`), `--output-format stream-json`, `--input-format stream-json`, `--resume`, `--permission-mode` (and whether `--dangerously-skip-permissions` is still the unattended switch), and whether a sandbox flag/setting exists. Confirm `remote-control` is a real subcommand.
+---
 
-**Step 2: Observe a real stream-json run**
+## Task 1b: Authenticate Taskie's isolated config dir (setup, one-time)
 
-```bash
-cd groups/main
-claude -p "Reply with exactly: HELLO" --output-format stream-json --verbose 2>/dev/null | tee /tmp/nanoclaw-stream.jsonl
-```
-Record the exact JSON shapes for: the init event (where `session_id` appears), assistant text messages, and the terminal `result` event. Save 3-4 representative lines verbatim — they become test fixtures in Task 2.
+Before any host `claude` run can work isolated, the dedicated config dir needs credentials.
 
-**Step 3: Confirm resume + streaming input**
+**Files:** none in-repo (operational setup) + a short section in `docs/MY-SETUP.md`.
+
+**Step 1: Authenticate the dir**
 
 ```bash
-SID=$(grep -m1 '"session_id"' /tmp/nanoclaw-stream.jsonl | python3 -c 'import sys,json; print(json.loads(sys.stdin.readline())["session_id"])')
-echo "session: $SID"
-claude -p "What did I just ask you to reply with?" --resume "$SID" --output-format stream-json --verbose 2>/dev/null | tail -5
+mkdir -p data/sessions/main/.claude
+CLAUDE_CONFIG_DIR="$(pwd)/data/sessions/main/.claude" claude setup-token
+# (or: CLAUDE_CONFIG_DIR=... claude  → /login once)
 ```
-Expected: the reply references "HELLO", proving `--resume` carries context. Note whether `--resume` in print mode returns a NEW session_id or reuses `$SID` (determines how `db.ts` is updated each turn).
 
-**Step 4: Commit the notes**
+**Step 2: Verify it is logged in and isolated**
 
 ```bash
-git add docs/plans/scratch-claude-cli-notes.md
-git commit -m "docs: scratch notes on claude CLI stream-json behavior (spike)"
+CLAUDE_CONFIG_DIR="$(pwd)/data/sessions/main/.claude" claude -p "Reply with: AUTH_OK" \
+  --output-format stream-json --verbose --permission-mode bypassPermissions 2>/dev/null \
+  | python3 -c 'import sys,json
+for l in sys.stdin:
+    try: o=json.loads(l)
+    except: continue
+    if o.get("type")=="system" and o.get("subtype")=="init":
+        print("mcp:",[m["name"] for m in o.get("mcp_servers",[])],"plugins:",[p["name"] for p in o.get("plugins",[])])
+    if o.get("type")=="result": print("result:",repr(o.get("result")),"cost:",o.get("total_cost_usd"))'
 ```
+Expected: `mcp: [] plugins: []` (until Task 4 adds the project `.mcp.json`), `result: 'AUTH_OK'`, non-zero cost (proves authed). Document the auth step in `docs/MY-SETUP.md` and commit that doc change.
 
-**Gate:** If `remote-control` is absent or stream-json shapes differ materially from this plan's assumptions, STOP and revise the plan before continuing.
+**Note:** This dir already exists and is populated by `container-runner.ts:buildVolumeMounts` (settings.json with agent-teams env, skills sync). The host model reuses it as the user-config dir. Decide in Task 4 whether to keep writing that settings.json from the runner or commit it statically.
 
 ---
 
@@ -247,8 +257,8 @@ Expected: FAIL — `buildClaudeArgs` not defined.
 
 **Step 3: Implement runner**
 
-- `buildClaudeArgs({ prompt, sessionId })`: returns the flag array using the exact flags from Task 0. Pass the prompt via `-p`; spawn with `cwd = path.join(GROUPS_DIR, 'main')`.
-- `runHostClaudeAgent(group, input, onProcess, onOutput)`: same signature/return (`ContainerOutput`) as `runContainerAgent`. Spawn `claude` (resolve absolute path; do not rely on launchd PATH — see MY-SETUP notes on Homebrew PATH). Set env: inherit, plus `NANOCLAW_CHAT_JID`, `NANOCLAW_GROUP_FOLDER`, `NANOCLAW_IS_MAIN`, and `NANOCLAW_IPC_DIR=data/ipc/main`. Do NOT inject `ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN` (the host `claude` reads its own credentials).
+- `buildClaudeArgs({ prompt, sessionId })`: returns the flag array using the exact flags from Task 0 ground truth — `-p`, `--output-format stream-json`, `--verbose`, `--permission-mode bypassPermissions`, `--strict-mcp-config`, and `--resume <id>` only when a sessionId is present. Spawn with `cwd = path.join(GROUPS_DIR, 'main')`.
+- `runHostClaudeAgent(group, input, onProcess, onOutput)`: same signature/return (`ContainerOutput`) as `runContainerAgent`. Spawn `claude` at its absolute path (`/Users/ballen/.local/bin/claude`; do not rely on launchd PATH — see MY-SETUP notes). Set env: inherit, plus **`CLAUDE_CONFIG_DIR=<abs>/data/sessions/main/.claude`** (the isolation requirement — without it the run inherits the user's personal `~/.claude`), `NANOCLAW_CHAT_JID`, `NANOCLAW_GROUP_FOLDER`, `NANOCLAW_IS_MAIN`, and `NANOCLAW_IPC_DIR=<abs>/data/ipc/main`. The isolated config dir is pre-authenticated (Task 1b), so no token injection is needed; if the dir is ever unauthenticated the run fails fast with "Not logged in".
 - Pipe stdout through `ClaudeStreamParser`; on `text` build a `ContainerOutput {status:'success', result:text}` and call `onOutput`; capture `sessionId` into `newSessionId`. Reuse container-runner's idle-timer reset on activity, hard timeout (`Math.max(CONTAINER_TIMEOUT, IDLE_TIMEOUT + 30_000)`), stdout/stderr size caps, and per-run log file under `groups/main/logs/`.
 - On close: resolve `{status, result:null, newSessionId}` mirroring container-runner's streaming-mode branch.
 
@@ -382,13 +392,13 @@ git commit -m "feat: route main group through host claude runner (container kept
 **Step 1: Manual smoke test first**
 
 ```bash
-cd groups/main && claude remote-control
+cd groups/main && CLAUDE_CONFIG_DIR="$(git rev-parse --show-toplevel)/data/sessions/main/.claude" claude remote-control --name Taskie
 ```
-Attach from the Claude mobile app. Verify: skills load, the `nanoclaw` MCP tools are available (try `send_message` → message arrives in Telegram), and `groups/main/CLAUDE.md` memory is in context. Record exact connect steps/URL behavior.
+Attach from the Claude mobile app — it should appear as a **"Taskie"** endpoint, separate from your personal Claude Code. Verify: Taskie's skills load (NOT superpowers), the `nanoclaw` MCP tools are available (try `send_message` → message arrives in Telegram), and `groups/main/CLAUDE.md` memory is in context. Confirm personal MCP/superpowers are absent (proves isolation). Record exact connect steps/URL behavior.
 
 **Step 2: Create the launchd plist**
 
-A `com.nanoclaw.remote` LaunchAgent: `WorkingDirectory` = `<abs>/groups/main`, `ProgramArguments` = absolute `claude` path + `remote-control` (+ any keep-alive/non-interactive flags discovered in Step 1), `KeepAlive` true, `StandardOut/ErrorPath` to `logs/remote-control.log`, and a `PATH` `EnvironmentVariable` including the Homebrew/node bin dir (per MY-SETUP launchd-PATH note).
+A `com.nanoclaw.remote` LaunchAgent: `WorkingDirectory` = `<abs>/groups/main`, `ProgramArguments` = absolute `claude` path + `remote-control --name Taskie` (+ any keep-alive flags discovered in Step 1), `EnvironmentVariables` including **`CLAUDE_CONFIG_DIR=<abs>/data/sessions/main/.claude`** (isolation) and a `PATH` with the Homebrew/node bin dir, `KeepAlive` true, `StandardOut/ErrorPath` to `logs/remote-control.log`.
 
 **Step 3: Load and verify**
 

@@ -49,14 +49,18 @@ The `nanoclaw` stdio MCP server (`send_message`, `schedule_task`, `list/pause/re
 - Memory is unchanged: `groups/main/CLAUDE.md` + global `groups/CLAUDE.md` load natively because the harness runs in `groups/main`.
 - The pre-compact transcript-archiving hook and the bash-secret-sanitization hook move into `groups/main/.claude/settings.json` as real Claude Code hooks (they currently live in the SDK runner).
 
-### 4. Auth & secrets — simplified
-No more secrets-over-stdin. The host `claude` uses logged-in credentials (keychain / `CLAUDE_CODE_OAUTH_TOKEN`). This is the article's "credentials stay on host" property — there is no guest to leak into. The bash-secret-sanitization hook stays as defense-in-depth.
+### 4. Config isolation & auth (added after Task 0 spike)
+A host `claude` run in `groups/main` inherits the **user's personal `~/.claude`** — the superpowers `SessionStart` hook, personal claude.ai MCP servers (Gmail/Drive/Calendar), personal memory, and 1M-context opus ($0.11 for a one-word reply). That is wrong for an always-on assistant (skills-hijack on every Telegram message; personal accounts reachable from triggers).
+
+**Decision: both Taskie processes run fully isolated** via a dedicated `CLAUDE_CONFIG_DIR` pointed at the existing per-group path `data/sessions/main/.claude`. With it set, the spike confirmed `mcp_servers: []`, `plugins: []`, and no superpowers hook. Project-level `groups/main/.claude/` + `groups/main/.mcp.json` still load (cwd-based) and carry Taskie's own hooks/MCP/skills. The user's personal Claude Code is untouched (default `~/.claude`).
+
+A fresh config dir is not logged in (credentials live in the config dir, not the keychain), so Taskie's config dir is **authenticated once** during setup (`CLAUDE_CONFIG_DIR=<dir> claude setup-token`/login, or `CLAUDE_CODE_OAUTH_TOKEN` from `.env`). No more secrets-over-stdin; no guest to leak into. The bash-secret-sanitization hook stays as defense-in-depth.
 
 ### 5. Scheduler
 `task-scheduler.ts` swaps `runContainerAgent` for the same `host-claude-runner` call. Isolated vs group context = fresh session vs `--resume`. No other change.
 
 ### 6. Remote Control (phone path)
-A second long-lived process: `claude remote-control` running in `groups/main` with the **same `.claude/` config**, so it inherits identical skills, MCP servers (`nanoclaw` tools + apple-events/calendar), and memory. Managed by launchd alongside the orchestrator. From the phone, attaching yields a Taskie that can `send_message` to Telegram, `schedule_task`, and edit memory — same powers as the automated path.
+A second long-lived process: `claude remote-control --name Taskie` running in `groups/main` with the **same isolated `CLAUDE_CONFIG_DIR`** as the Telegram runner, so it loads identical skills, MCP servers (`nanoclaw` tools + apple-events/calendar), and memory. It appears as a distinct **"Taskie" endpoint** in the Claude app, separate from the user's personal Claude Code (which they can still attach to independently). Managed by launchd alongside the orchestrator. From the phone, attaching yields a Taskie that can `send_message` to Telegram, `schedule_task`, and edit memory — same powers as the automated path. Features can be added to this endpoint over time.
 
 ### 7. Sandboxing (Seatbelt)
 `claude` runs with its macOS Seatbelt sandbox enabled, workspace scoped to the NanoClaw project dir plus allowed dirs (e.g. apple-events bridge). Bash now runs sandboxed-on-Mac instead of in a Linux VM.
