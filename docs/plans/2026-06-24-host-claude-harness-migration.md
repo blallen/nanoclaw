@@ -40,36 +40,13 @@ No code. De-risk every later task by confirming exact flags and event shapes for
 
 ---
 
-## Task 1b: Authenticate Taskie's isolated config dir (setup, one-time)
+## Task 1b: Auth approach — RESOLVED (no interactive step)
 
-Before any host `claude` run can work isolated, the dedicated config dir needs credentials.
+**Verified during the spike:** a fresh `CLAUDE_CONFIG_DIR` **+** `CLAUDE_CODE_OAUTH_TOKEN` env var → fully **isolated** (`mcp_servers: []`, `plugins: []`, no superpowers hook) **and authed** (reply succeeded, `is_error: false`, cost ~$0.05). The user's personal `claude` authenticates via the macOS **keychain** (no `.credentials.json`), which is why a bare fresh config dir reported "Not logged in" — but injecting the token bypasses that entirely.
 
-**Files:** none in-repo (operational setup) + a short section in `docs/MY-SETUP.md`.
+**Decision:** the host runner (Task 3) and the Remote Control launchd plist (Task 6) both set `CLAUDE_CONFIG_DIR=<abs>/data/sessions/main/.claude` (isolation) **and** pass `CLAUDE_CODE_OAUTH_TOKEN` (read from the project `.env`, reusing `readEnvFile`/`readSecrets`) into the `claude` subprocess env (auth). No interactive `claude login`/`setup-token` is required. The bash-secret-sanitization hook (Task 4) strips this token from Bash subprocess environments, so it never leaks to agent-run commands.
 
-**Step 1: Authenticate the dir**
-
-```bash
-mkdir -p data/sessions/main/.claude
-CLAUDE_CONFIG_DIR="$(pwd)/data/sessions/main/.claude" claude setup-token
-# (or: CLAUDE_CONFIG_DIR=... claude  → /login once)
-```
-
-**Step 2: Verify it is logged in and isolated**
-
-```bash
-CLAUDE_CONFIG_DIR="$(pwd)/data/sessions/main/.claude" claude -p "Reply with: AUTH_OK" \
-  --output-format stream-json --verbose --permission-mode bypassPermissions 2>/dev/null \
-  | python3 -c 'import sys,json
-for l in sys.stdin:
-    try: o=json.loads(l)
-    except: continue
-    if o.get("type")=="system" and o.get("subtype")=="init":
-        print("mcp:",[m["name"] for m in o.get("mcp_servers",[])],"plugins:",[p["name"] for p in o.get("plugins",[])])
-    if o.get("type")=="result": print("result:",repr(o.get("result")),"cost:",o.get("total_cost_usd"))'
-```
-Expected: `mcp: [] plugins: []` (until Task 4 adds the project `.mcp.json`), `result: 'AUTH_OK'`, non-zero cost (proves authed). Document the auth step in `docs/MY-SETUP.md` and commit that doc change.
-
-**Note:** This dir already exists and is populated by `container-runner.ts:buildVolumeMounts` (settings.json with agent-teams env, skills sync). The host model reuses it as the user-config dir. Decide in Task 4 whether to keep writing that settings.json from the runner or commit it statically.
+This makes Task 1b a no-op operationally; the verification is folded into Task 3 Step 5 and Task 6 Step 1. The existing `data/sessions/main/.claude` dir (populated by `container-runner.ts:buildVolumeMounts`: settings.json with agent-teams env, skills sync) is reused as Taskie's isolated user-config dir — Task 4 decides whether the runner keeps writing that settings.json or it is committed statically.
 
 ---
 
@@ -258,7 +235,10 @@ Expected: FAIL — `buildClaudeArgs` not defined.
 **Step 3: Implement runner**
 
 - `buildClaudeArgs({ prompt, sessionId })`: returns the flag array using the exact flags from Task 0 ground truth — `-p`, `--output-format stream-json`, `--verbose`, `--permission-mode bypassPermissions`, `--strict-mcp-config`, and `--resume <id>` only when a sessionId is present. Spawn with `cwd = path.join(GROUPS_DIR, 'main')`.
-- `runHostClaudeAgent(group, input, onProcess, onOutput)`: same signature/return (`ContainerOutput`) as `runContainerAgent`. Spawn `claude` at its absolute path (`/Users/ballen/.local/bin/claude`; do not rely on launchd PATH — see MY-SETUP notes). Set env: inherit, plus **`CLAUDE_CONFIG_DIR=<abs>/data/sessions/main/.claude`** (the isolation requirement — without it the run inherits the user's personal `~/.claude`), `NANOCLAW_CHAT_JID`, `NANOCLAW_GROUP_FOLDER`, `NANOCLAW_IS_MAIN`, and `NANOCLAW_IPC_DIR=<abs>/data/ipc/main`. The isolated config dir is pre-authenticated (Task 1b), so no token injection is needed; if the dir is ever unauthenticated the run fails fast with "Not logged in".
+- `runHostClaudeAgent(group, input, onProcess, onOutput)`: same signature/return (`ContainerOutput`) as `runContainerAgent`. Spawn `claude` at its absolute path (`/Users/ballen/.local/bin/claude`; do not rely on launchd PATH — see MY-SETUP notes). Set env: inherit, plus:
+  - **`CLAUDE_CONFIG_DIR=<abs>/data/sessions/main/.claude`** (isolation — without it the run inherits the user's personal `~/.claude`: superpowers hook, personal MCP, etc.).
+  - **`CLAUDE_CODE_OAUTH_TOKEN`** read from `.env` via `readEnvFile`/`readSecrets` (auth — the isolated dir relies on this, not the keychain). Verified: config-dir isolation + token env = isolated AND authed.
+  - `NANOCLAW_CHAT_JID`, `NANOCLAW_GROUP_FOLDER`, `NANOCLAW_IS_MAIN`, `NANOCLAW_IPC_DIR=<abs>/data/ipc/main`.
 - Pipe stdout through `ClaudeStreamParser`; on `text` build a `ContainerOutput {status:'success', result:text}` and call `onOutput`; capture `sessionId` into `newSessionId`. Reuse container-runner's idle-timer reset on activity, hard timeout (`Math.max(CONTAINER_TIMEOUT, IDLE_TIMEOUT + 30_000)`), stdout/stderr size caps, and per-run log file under `groups/main/logs/`.
 - **Carried forward from Task 1 review (must do):** before spawning, create the host IPC dirs mirroring `container-runner.ts:201-204` — `data/ipc/main/{messages,tasks,input,images}` — because the `nanoclaw` MCP `send_message` writes a `<IPC_DIR>/input/_sent` sentinel and will throw `ENOENT` if `input/` is absent. Also replicate the `_sent` sentinel consume/cleanup that the container agent-runner does (`container/agent-runner/src/index.ts` `checkAndClearSentFlag`), so the "did the agent message this turn" signal works on the host path (the host has no agent-runner). If that signal is unused by the host flow, explicitly note it; do not silently drop it.
 - On close: resolve `{status, result:null, newSessionId}` mirroring container-runner's streaming-mode branch.
@@ -399,7 +379,7 @@ Attach from the Claude mobile app — it should appear as a **"Taskie"** endpoin
 
 **Step 2: Create the launchd plist**
 
-A `com.nanoclaw.remote` LaunchAgent: `WorkingDirectory` = `<abs>/groups/main`, `ProgramArguments` = absolute `claude` path + `remote-control --name Taskie` (+ any keep-alive flags discovered in Step 1), `EnvironmentVariables` including **`CLAUDE_CONFIG_DIR=<abs>/data/sessions/main/.claude`** (isolation) and a `PATH` with the Homebrew/node bin dir, `KeepAlive` true, `StandardOut/ErrorPath` to `logs/remote-control.log`.
+A `com.nanoclaw.remote` LaunchAgent: `WorkingDirectory` = `<abs>/groups/main`, `ProgramArguments` = absolute `claude` path + `remote-control --name Taskie` (+ any keep-alive flags discovered in Step 1), `EnvironmentVariables` including **`CLAUDE_CONFIG_DIR=<abs>/data/sessions/main/.claude`** (isolation), **`CLAUDE_CODE_OAUTH_TOKEN`** (auth — same token used by the runner), and a `PATH` with the Homebrew/node bin dir, `KeepAlive` true, `StandardOut/ErrorPath` to `logs/remote-control.log`. (launchd plists store env values literally — be mindful the token lands in the plist; that matches how the service already handles secrets, but note it.)
 
 **Step 3: Load and verify**
 
