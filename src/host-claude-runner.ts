@@ -36,7 +36,7 @@ import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
 
 // Absolute path to the claude binary — do NOT rely on PATH.
-const CLAUDE_BIN = '/Users/ballen/.local/bin/claude';
+const CLAUDE_BIN = process.env.NANOCLAW_CLAUDE_BIN || '/Users/ballen/.local/bin/claude';
 
 /**
  * Build the claude CLI flag array. The prompt is NOT passed as an argv — it is
@@ -132,6 +132,12 @@ export async function runHostClaudeAgent(
 
     // Pass the prompt via stdin (avoids argv shell-escaping/size issues).
     // `claude -p` with no positional prompt reads it from stdin.
+    child.stdin.on('error', (err) => {
+      logger.warn(
+        { group: group.name, error: err },
+        'Host claude stdin write failed (process exited early?)',
+      );
+    });
     child.stdin.write(input.prompt);
     child.stdin.end();
 
@@ -219,6 +225,14 @@ export async function runHostClaudeAgent(
       timedOut = true;
       logger.error({ group: group.name, name }, 'Host claude timeout, killing process');
       child.kill();
+      // Escalate to SIGKILL if claude ignores SIGTERM (mirrors container-runner).
+      setTimeout(() => {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          /* already exited */
+        }
+      }, 5000).unref?.();
     };
 
     let timeout = setTimeout(killOnTimeout, timeoutMs);
@@ -292,7 +306,7 @@ export async function runHostClaudeAgent(
         resolve({
           status: 'error',
           result: null,
-          error: `Host claude timed out after ${configTimeout}ms`,
+          error: `Host claude timed out after ${timeoutMs}ms`,
         });
         return;
       }
