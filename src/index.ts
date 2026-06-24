@@ -21,11 +21,11 @@ import { findChannel } from './router.js';
 import {
   ContainerOutput,
   discoverHostGateway,
-  runContainerAgent,
   writeGroupsSnapshot,
   writeMcpServersSnapshot,
   writeTasksSnapshot,
 } from './container-runner.js';
+import { chooseRunner } from './runner-selection.js';
 import {
   getAllChats,
   getAllRegisteredGroups,
@@ -276,7 +276,7 @@ async function runAgent(
     : undefined;
 
   try {
-    const output = await runContainerAgent(
+    const output = await chooseRunner(group)(
       group,
       {
         prompt,

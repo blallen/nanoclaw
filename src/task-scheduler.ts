@@ -10,7 +10,8 @@ import {
   SCHEDULER_POLL_INTERVAL,
   TIMEZONE,
 } from './config.js';
-import { ContainerOutput, runContainerAgent, writeTasksSnapshot } from './container-runner.js';
+import { ContainerOutput, writeTasksSnapshot } from './container-runner.js';
+import { chooseRunner } from './runner-selection.js';
 import {
   getAllTasks,
   getDueTasks,
@@ -102,7 +103,7 @@ async function runTask(
   };
 
   try {
-    const output = await runContainerAgent(
+    const output = await chooseRunner(group)(
       group,
       {
         prompt: task.prompt,
