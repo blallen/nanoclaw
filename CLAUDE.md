@@ -4,7 +4,9 @@ Personal Claude assistant. See [README.md](README.md) for philosophy and setup. 
 
 ## Quick Context
 
-Single Node.js process that connects to Telegram (primary channel), routes messages to Claude Agent SDK running in Apple Container (Linux VMs). Each group has isolated filesystem and memory.
+Single Node.js process that connects to Telegram (primary channel) and routes messages to a Claude agent. Each group has isolated filesystem and memory.
+
+The **main** group runs as a **host `claude` harness** (full Claude Code, not the embedded Agent SDK) operating directly in `groups/main/` — the Apple Container is retired for main. **Non-main** groups still run the Claude Agent SDK inside an Apple Container (Linux VM). `src/runner-selection.ts` (`chooseRunner`) routes the main path to `host-claude-runner.ts` and everything else to `container-runner.ts`. Both Telegram (automated, headless) and the "Taskie" Remote Control phone endpoint drive the same host harness over the shared `groups/main` workspace. See `docs/plans/2026-06-24-host-claude-harness-migration-design.md`.
 
 ## Key Files
 
@@ -16,11 +18,16 @@ Single Node.js process that connects to Telegram (primary channel), routes messa
 | `src/ipc.ts` | IPC watcher and task processing |
 | `src/router.ts` | Message formatting and outbound routing |
 | `src/config.ts` | Trigger pattern, paths, intervals |
-| `src/container-runner.ts` | Spawns agent containers with mounts |
+| `src/runner-selection.ts` | `chooseRunner(group)`: host runner for `main`, container runner otherwise |
+| `src/host-claude-runner.ts` | Spawns host `claude -p` harness for `main` (no container) |
+| `src/claude-stream.ts` | `ClaudeStreamParser` for `claude --output-format stream-json` |
+| `src/nanoclaw-mcp-server.ts` | Host twin of the container `nanoclaw` MCP (send_message/schedule_task/etc.); reads `NANOCLAW_IPC_DIR` |
+| `src/container-runner.ts` | Spawns agent containers with mounts (non-main groups) |
 | `src/task-scheduler.ts` | Runs scheduled tasks |
 | `src/db.ts` | SQLite operations |
+| `groups/main/.claude/` | Main harness config: `settings.json` + `hooks/` (sanitize-bash, archive-precompact) |
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
-| `container/skills/agent-browser.md` | Browser automation tool (available to all agents via Bash) |
+| `container/skills/agent-browser.md` | Browser automation tool (container agents via Bash; host re-homing is a follow-up) |
 
 ## Skills
 
@@ -47,6 +54,8 @@ launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
 ```
 
 ## Container Build Cache
+
+Applies only to **non-main** groups now — `main` runs on the host harness and does not use the container image.
 
 Apple Container's buildkit caches the build context aggressively. `--no-cache` alone does NOT invalidate COPY steps — the builder's volume retains stale files. To force a truly clean rebuild:
 

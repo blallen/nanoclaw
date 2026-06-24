@@ -116,6 +116,13 @@ function buildVolumeMounts(
   const homeDir = getHomeDir();
   const projectRoot = process.cwd();
 
+  // NOTE: As of the host-harness migration (docs/plans/2026-06-24-host-claude-
+  // harness-migration-design.md), the `main` group runs on the host via
+  // `host-claude-runner.ts`, NOT in a container. Production reaches this function
+  // only for NON-main groups, so the `isMain === true` branch below is effectively
+  // unreachable in normal operation. It is retained for completeness / potential
+  // non-host callers and to keep the runner contract symmetric — do not rely on it
+  // for the main path. Behavior is intentionally unchanged.
   if (isMain) {
     // Main gets the entire project root mounted
     mounts.push({

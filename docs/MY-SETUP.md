@@ -22,6 +22,41 @@ WhatsApp was never used in production — Telegram was set up directly as the pr
 
 ---
 
+## Host-Harness Model (main group)
+
+> Design doc: `docs/plans/2026-06-24-host-claude-harness-migration-design.md`. This is a concise operational note, not a duplicate of that doc.
+
+The **main** group (Taskie) no longer runs the Claude Agent SDK inside an ephemeral Apple Container. Instead, the agent loop runs **on the host** as a full Claude Code harness (Cowork-style: the host runs the loop, the sandbox is just the workspace it operates in). `src/runner-selection.ts` `chooseRunner(group)` routes `main` to `src/host-claude-runner.ts` and every other group to the container path (`src/container-runner.ts`), which is unchanged.
+
+### How it runs
+
+- `runHostClaudeAgent` spawns `claude -p --output-format stream-json --verbose --permission-mode bypassPermissions` with `cwd = groups/main`. Output is parsed by `src/claude-stream.ts` (`ClaudeStreamParser`), not the old `NANOCLAW_OUTPUT_*` markers.
+- Sessions are native Claude Code sessions (`--resume <id>`); `db.ts` stores one stable id per group, captured from the `system/init` stream event.
+- The `nanoclaw` toolset (`send_message`, `schedule_task`, etc.) is the host twin `src/nanoclaw-mcp-server.ts`. It's auto-loaded via a project-level `groups/main/.mcp.json` that the runner generates at startup (`writeMcpConfig`) — that file is gitignored (machine-specific absolute paths) and not committed. The MCP server writes the same IPC JSON into `data/ipc/main/`, which `src/ipc.ts` watches.
+
+### Isolation & auth
+
+A bare host `claude` run in `groups/main` would inherit the **user's personal `~/.claude`** (superpowers `SessionStart` hook, personal claude.ai MCP servers, 1M-context opus). To avoid that, both Taskie processes set a dedicated **`CLAUDE_CONFIG_DIR` → `data/sessions/main/.claude`** (yields `mcp_servers: []`, `plugins: []`, no superpowers hook). Because an isolated config dir is not keychain-authenticated, auth is supplied via **`CLAUDE_CODE_OAUTH_TOKEN`** read from `.env`. The user's personal Claude Code (default `~/.claude`) is untouched.
+
+### Hooks (ported from the container agent-runner)
+
+Taskie's hooks now live in `groups/main/.claude/` as real Claude Code command hooks (wired in `settings.json`):
+
+- `hooks/sanitize-bash.mjs` — PreToolUse(Bash): strips `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` from Bash subprocess environments (defense-in-depth so the injected token never leaks to agent-run commands).
+- `hooks/archive-precompact.mjs` — PreCompact: archives the transcript to `groups/main/conversations/` before compaction.
+
+### Remote Control (phone endpoint)
+
+A second, long-lived `claude remote-control --name Taskie` process runs in `groups/main` with the **same isolated `CLAUDE_CONFIG_DIR`**, so it loads identical skills/MCP/memory and appears as a distinct **"Taskie"** endpoint in the Claude mobile app (separate from your personal Claude Code). Telegram (automated/headless) and the phone (interactive) are two drivers over the **same workspace + `CLAUDE.md` memory** — they share state via files, not a single live conversation. Per-`main` work is serialized through the existing `GroupQueue` so the two drivers don't race. This endpoint is intended to be launchd-managed alongside the orchestrator; the live cutover (loading the remote-control LaunchAgent + one-time auth of the isolated config dir) is performed by hand, see the design doc §6.
+
+### Sandboxing change
+
+Main's bash now runs **on the host under Claude Code's macOS sandbox** (Seatbelt, scoped to the project dir + allowed dirs), not inside a Linux VM. This is weaker isolation than a hypervisor — accepted because it's the same primitive Claude Code itself ships and the user owns the machine and data.
+
+**Known follow-up:** `agent-browser`/Chromium currently assume the Linux container. On the host this needs re-homing (macOS Chromium, or one optional browser-only container). Tracked as a follow-up, not a v1 blocker.
+
+---
+
 ## Apple MCP Bridge
 
 Goal: give the container agent (Taskie) read/write access to Apple Reminders and Calendar.
@@ -80,6 +115,11 @@ The binary is vendored at `vendor/CheICalMCP` (pinned to a specific release). It
 |------|---------------|
 | `src/mcp-bridge-manager.ts` | Manages supergateway instances for MCP servers via registry |
 | `src/channels/telegram.ts` | Telegram channel (added via skill) |
+| `src/host-claude-runner.ts` | Host `claude` harness for the main group (replaces the container for main) |
+| `src/runner-selection.ts` | `chooseRunner`: host runner for `main`, container runner otherwise |
+| `src/claude-stream.ts` | Parser for `claude --output-format stream-json` |
+| `src/nanoclaw-mcp-server.ts` | Host twin of the container `nanoclaw` MCP tools |
+| `groups/main/.claude/` | Main harness `settings.json` + hooks (sanitize-bash, archive-precompact) |
 | `groups/main/CLAUDE.md` | Taskie's persona + apple-events tool documentation |
 | `vendor/` | (planned) Will hold vendored `CheICalMCP` binary |
 | `docs/plans/` | Design docs and implementation plans for features |

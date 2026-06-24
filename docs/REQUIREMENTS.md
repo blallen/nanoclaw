@@ -110,6 +110,8 @@ A personal Claude assistant accessible via WhatsApp, with minimal custom code.
 - Bash access is safe because commands run inside the container, not on the host
 - Browser automation via agent-browser with Chromium in the container
 
+**Deviation (main group):** This fork's **main** group no longer runs in Apple Container. It runs on the host under Claude Code's macOS sandbox so it can use the full Claude Code harness (skills/hooks/slash commands/subagents), be driven from the phone via Remote Control, and gain reliability by moving the agent loop out of an ephemeral per-message VM. Isolation for main is the macOS sandbox plus a dedicated `CLAUDE_CONFIG_DIR` (weaker than a hypervisor, accepted for a single-user owned machine). **Non-main groups retain full Apple Container isolation.** See `docs/plans/2026-06-24-host-claude-harness-migration-design.md`.
+
 ### Scheduled Tasks
 - Users can ask Claude to schedule recurring or one-time tasks from any group
 - Tasks run as full agents in the context of the group that created them
