@@ -89,6 +89,19 @@ export interface ContainerOutput {
   error?: string;
 }
 
+/**
+ * Shared function-type contract for agent runners. Both `runContainerAgent`
+ * (container path) and `runHostClaudeAgent` (host path) must satisfy this type,
+ * so if their signatures ever drift apart it becomes a compile error rather than
+ * a silent runtime mismatch (enforced via `chooseRunner` in runner-selection.ts).
+ */
+export type AgentRunner = (
+  group: RegisteredGroup,
+  input: ContainerInput,
+  onProcess: (proc: ChildProcess, containerName: string) => void,
+  onOutput?: (output: ContainerOutput) => Promise<void>,
+) => Promise<ContainerOutput>;
+
 interface VolumeMount {
   hostPath: string;
   containerPath: string;
