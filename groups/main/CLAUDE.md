@@ -108,9 +108,9 @@ You run **on the host** (not in a container). Your current working directory is 
 | `../../` | Project root | read-write |
 
 Key paths (relative to your cwd in `groups/main/`):
-- `../../store/messages.db` - SQLite database
-- `../../store/messages.db` (registered_groups table) - Group config
+- `../../store/messages.db` - SQLite database (also holds the `registered_groups` table — group config)
 - `../../groups/` - All group folders
+- `../../data/ipc/main/` - Your IPC directory (also available as the `NANOCLAW_IPC_DIR` environment variable)
 
 ---
 
@@ -118,17 +118,15 @@ Key paths (relative to your cwd in `groups/main/`):
 
 ### Finding Available Groups
 
-Available groups are provided in `../../data/ipc/main/available_groups.json`.
+Available groups are listed in `$NANOCLAW_IPC_DIR/available_groups.json` (i.e. `../../data/ipc/main/available_groups.json`).
 
 Groups are ordered by most recent activity. The list is synced periodically.
 
-If a group the user mentions isn't in the list, request a fresh sync (the IPC file is an implementation detail — prefer the nanoclaw MCP tools where available):
+If a group the user mentions isn't in the list, request a fresh sync (the IPC file is an implementation detail — prefer the nanoclaw MCP tools where available). Drop a task file into your IPC tasks directory, then wait a moment and re-read `available_groups.json`:
 
 ```bash
-echo '{"type": "refresh_groups"}' > ../../data/ipc/main/tasks/refresh_$(date +%s).json
+echo '{"type": "refresh_groups"}' > "$NANOCLAW_IPC_DIR/tasks/refresh_$(date +%s).json"
 ```
-
-Then wait a moment and re-read `available_groups.json`.
 
 **Fallback**: Query the SQLite database directly:
 
@@ -162,8 +160,8 @@ Fields:
 
 ### Adding a Group
 
-1. Query the database to find the group's JID
-2. Use the `register_group` IPC tool (the preferred way — `mcp__nanoclaw__register_group`)
+1. Find the group's JID from `available_groups.json` (or query the database — see above)
+2. Use the `register_group` MCP tool (`mcp__nanoclaw__register_group`)
 3. Create the group folder: `../../groups/{folder-name}/`
 4. Optionally create an initial `CLAUDE.md` for the group
 
@@ -182,7 +180,7 @@ Remove the entry from the `registered_groups` table. The group folder and its fi
 
 ### Listing Groups
 
-Query the `registered_groups` table or use the `list_tasks` tool for an overview.
+Query the `registered_groups` table in `../../store/messages.db` for an overview.
 
 ---
 
