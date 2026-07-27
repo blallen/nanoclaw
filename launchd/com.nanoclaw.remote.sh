@@ -1,6 +1,9 @@
 #!/bin/bash
 # Launches the isolated "Taskie" Remote Control endpoint.
-# Sources .env for CLAUDE_CODE_OAUTH_TOKEN so the token never lives in a plist.
+# Sources .env for NANOCLAW_CHAT_JID (kept out of the plist). The inference-only
+# CLAUDE_CODE_OAUTH_TOKEN it also sets is unset below: Remote Control requires the
+# full-scope login stored in CLAUDE_CONFIG_DIR by `claude auth login`, and REJECTS
+# the long-lived token. (The headless Telegram runner still uses that token.)
 set -euo pipefail
 PROJECT_ROOT="/Users/ballen/Projects/nanoclaw"
 cd "$PROJECT_ROOT/groups/main"
@@ -28,6 +31,10 @@ export NANOCLAW_CHAT_JID="${NANOCLAW_CHAT_JID:-}"
 # No `env` block is written: the stdio MCP inherits the NANOCLAW_* vars exported above.
 NODE="/opt/homebrew/opt/node@22/bin/node"
 ( cd "$PROJECT_ROOT" && "$NODE" -e "import('$PROJECT_ROOT/dist/host-claude-runner.js').then((m) => m.writeMcpConfig('main'))" )
+# Remote Control needs the FULL-SCOPE login token that `claude auth login` wrote into
+# CLAUDE_CONFIG_DIR. The inference-only CLAUDE_CODE_OAUTH_TOKEN sourced from .env above
+# is REJECTED by remote-control, so drop it (and ANTHROPIC_API_KEY) before exec.
+unset CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY
 # --add-dir grants the phone Taskie tool access to the whole project root (SQLite DB,
 # group folders, global memory) — mirrors the host runner's reach.
 exec /Users/ballen/.local/bin/claude remote-control --name Taskie --add-dir "$PROJECT_ROOT"
