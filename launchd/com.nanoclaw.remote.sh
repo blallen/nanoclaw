@@ -35,6 +35,7 @@ NODE="/opt/homebrew/opt/node@22/bin/node"
 # CLAUDE_CONFIG_DIR. The inference-only CLAUDE_CODE_OAUTH_TOKEN sourced from .env above
 # is REJECTED by remote-control, so drop it (and ANTHROPIC_API_KEY) before exec.
 unset CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY
-# --add-dir grants the phone Taskie tool access to the whole project root (SQLite DB,
-# group folders, global memory) — mirrors the host runner's reach.
-exec /Users/ballen/.local/bin/claude remote-control --name Taskie --add-dir "$PROJECT_ROOT"
+# NOTE: `claude remote-control` does NOT accept --add-dir (that flag is only for `claude -p`).
+# The session's cwd is groups/main; project-root reach for admin tasks, if wanted, is granted
+# via permissions.additionalDirectories in groups/main/.claude/settings.json — not a CLI flag.
+exec /Users/ballen/.local/bin/claude remote-control --name Taskie
