@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { buildClaudeArgs } from './host-claude-runner.js';
+import { buildClaudeArgs, isStaleSessionError } from './host-claude-runner.js';
 
 describe('buildClaudeArgs', () => {
   it('uses print + stream-json + verbose', () => {
@@ -34,5 +34,31 @@ describe('buildClaudeArgs', () => {
     expect(a.join(' ')).toContain('--output-format stream-json');
     expect(a).toContain('--permission-mode bypassPermissions'.split(' ')[0]);
     expect(a.join(' ')).toContain('--permission-mode bypassPermissions');
+  });
+});
+
+describe('isStaleSessionError', () => {
+  it('matches the claude CLI stale-session message', () => {
+    expect(
+      isStaleSessionError(
+        'No conversation found with session ID: 0b1f4a2e-1c33-4d9a-9f2e-77aa1b2c3d4e',
+      ),
+    ).toBe(true);
+  });
+
+  it('matches case-insensitively and when embedded in surrounding log noise', () => {
+    expect(
+      isStaleSessionError(
+        '[DEBUG] starting\nno conversation found with session id: abc\n[DEBUG] exiting\n',
+      ),
+    ).toBe(true);
+  });
+
+  it('does not match unrelated failures', () => {
+    expect(isStaleSessionError('')).toBe(false);
+    expect(isStaleSessionError('Error: connection reset by peer')).toBe(false);
+    expect(isStaleSessionError('Invalid API key')).toBe(false);
+    // A session id appearing in ordinary output must not trip the check.
+    expect(isStaleSessionError('resuming session ID: abc')).toBe(false);
   });
 });

@@ -75,6 +75,19 @@ export function buildClaudeArgs({
 }
 
 /**
+ * True when claude's output indicates the id passed to `--resume` is not in the
+ * host session store. Observed on stderr with exit code 1:
+ *
+ *   No conversation found with session ID: <uuid>
+ *
+ * Checked against stdout too — under --output-format stream-json the same
+ * failure can surface in a `result` event rather than on stderr.
+ */
+export function isStaleSessionError(text: string): boolean {
+  return /No conversation found with session ID/i.test(text);
+}
+
+/**
  * Write the project-level `.mcp.json` for a group's workspace so that `claude`
  * (run with cwd = groups/<folder>) auto-loads the host-runnable `nanoclaw`
  * MCP server. Idempotent — overwritten each run.
